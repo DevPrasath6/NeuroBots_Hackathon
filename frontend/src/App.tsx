@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MoltenBackground } from "./components/MoltenBackground";
-import { SparklesCursor } from "./components/SparklesCursor";
+
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Recommendations from "./pages/Recommendations";
@@ -28,7 +28,7 @@ const App = () => (
             <Toaster />
             <Sonner />
             <MoltenBackground />
-            <SparklesCursor />
+
             <BrowserRouter>
                 <Routes>
                     <Route path="/" element={<Index />} />
