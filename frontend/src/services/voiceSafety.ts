@@ -1,4 +1,5 @@
 import { dataService } from './dataService';
+import { toast } from '../hooks/use-toast';
 
 export interface SafetyAlert {
   id: string;
@@ -239,34 +240,41 @@ class VoiceSafetyService {
 
   // --- Speak Utterance (Priority queue manager) ---
   public speak(text: string, priority: 1 | 2 | 3, duplicateKey?: string) {
-    if (!this.settings.enabled || !window.speechSynthesis) return;
-
-    const now = Date.now();
-    let cooldown = 20000; // default 20s
-
-    // Set custom cooldown periods
-    if (duplicateKey) {
-      if (duplicateKey.includes("Overheating") || duplicateKey.includes("Temperature")) {
-        cooldown = 60000; // High Temperature repeats only every 60 seconds
-      } else if (duplicateKey.includes("Deviation") || duplicateKey.includes("Spectrometer")) {
-        cooldown = 90000; // Spectrometer deviation repeats only every 90 seconds
-      } else if (duplicateKey.includes("Inventory") || duplicateKey.includes("Shortage")) {
-        cooldown = 3600000; // Inventory alert speaks only once (1 hr cooldown unless changed)
-      }
+    if (!this.settings.enabled) {
+      // Still show toast popups even if the voice audio setting is disabled!
+      toast({
+        title: priority === 3 ? "Critical AI Voice Alert" : priority === 2 ? "Warning AI Voice Alert" : "AI Voice Assistant",
+        description: text,
+        variant: priority === 3 ? "destructive" : "default",
+      });
+      return;
     }
 
-    // Deduplication cooldown check
-    if (duplicateKey) {
-      const last = this.lastSpokenTime.get(duplicateKey) || 0;
+    const now = Date.now();
+    let cooldown = 15000; // default 15s
+
+    // Set custom cooldown periods
+    const key = duplicateKey || text;
+    if (key.includes("Overheating") || key.includes("Temperature")) {
+      cooldown = 45000; // High Temperature repeats only every 45 seconds
+    } else if (key.includes("Deviation") || key.includes("Spectrometer")) {
+      cooldown = 60000; // Spectrometer deviation repeats only every 60 seconds
+    } else if (key.includes("Inventory") || key.includes("Shortage")) {
+      cooldown = 1800000; // Inventory alert speaks only once (30 min cooldown)
+    }
+
+    // Deduplication cooldown check for all alerts to prevent spamming
+    if (priority !== 3) {
+      const last = this.lastSpokenTime.get(key) || 0;
       if (now - last < cooldown) {
         return;
       }
-      this.lastSpokenTime.set(duplicateKey, now);
+      this.lastSpokenTime.set(key, now);
     }
 
     // Critical interrupt handling (Level 3 immediately cancels lower priority and empties queue)
     if (priority === 3) {
-      window.speechSynthesis.cancel();
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
       this.activeUtterance = null;
       this.activePriority = 0;
       // Filter out low priority elements from queue
@@ -300,6 +308,15 @@ class VoiceSafetyService {
   private speakUtterance(rawText: string, priority: 1 | 2 | 3) {
     // English Only strictly enforced
     let text = replaceNumbersWithWords(rawText);
+
+    // Trigger visual toast pop-up for ALL text-to-speech results
+    toast({
+      title: priority === 3 ? "Critical AI Voice Alert" : priority === 2 ? "Warning AI Voice Alert" : "AI Voice Assistant",
+      description: rawText,
+      variant: priority === 3 ? "destructive" : "default",
+    });
+
+    if (!window.speechSynthesis) return;
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.volume = this.settings.volume;

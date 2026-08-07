@@ -117,6 +117,205 @@ export const Dashboard = () => {
 
   const [additionsApplied, setAdditionsApplied] = useState<string[]>([]);
   const [spectrometerScansCount, setSpectrometerScansCount] = useState(0);
+
+  // Session audit data for production report
+  const [sessionAlerts, setSessionAlerts] = useState<SafetyAlert[]>([]);
+  const [reportGenerated, setReportGenerated] = useState(false);
+
+  // Explicit Production States
+  const [productionState, setProductionState] = useState<
+    'Standby' | 'Batch Created' | 'Recipe Generated' | 'Charging' | 'Heating' | 'Melting' | 'Monitoring' | 'Anomaly Detection' | 'Spectrometer Analysis' | 'Correction Required' | 'Spectrometer Revalidation' | 'Composition Approved' | 'Ready To Tap' | 'Tapping Animation' | 'Batch Completed' | 'Production Report' | 'Return Dashboard'
+  >('Return Dashboard');
+
+  // Accumulate safety alerts for session logging
+  useEffect(() => {
+    if (alertsList.length > 0) {
+      setSessionAlerts(prev => {
+        const updated = [...prev];
+        alertsList.forEach(a => {
+          if (!updated.some(x => x.id === a.id)) {
+            updated.push(a);
+          }
+        });
+        return updated;
+      });
+    }
+  }, [alertsList]);
+
+  // Synchronize state machine status
+  useEffect(() => {
+    const hasActiveAnomaly = alertsList.some(a => a.status !== 'resolved' && a.status !== 'closed');
+    if (currentStep === 0) {
+      setProductionState('Standby');
+    } else if (currentStep === 1 || currentStep === 2) {
+      setProductionState('Batch Created');
+    } else if (currentStep === 3) {
+      if (guidedStep === 0) {
+        setProductionState('Recipe Generated');
+      } else if (guidedStep < 3) {
+        setProductionState('Charging');
+      } else {
+        setProductionState('Recipe Generated');
+      }
+    } else if (currentStep === 4) {
+      if (meltSubState === "initial_melting") {
+        if (hasActiveAnomaly) {
+          setProductionState('Anomaly Detection');
+        } else if (meltTemperature < 1150) {
+          setProductionState('Heating');
+        } else {
+          setProductionState('Melting');
+        }
+      } else if (meltSubState.startsWith("sampling_required")) {
+        setProductionState('Monitoring');
+      } else if (meltSubState.startsWith("oes_scan")) {
+        if (meltSubState === "oes_scan_validation") {
+          setProductionState('Spectrometer Revalidation');
+        } else {
+          setProductionState('Spectrometer Analysis');
+        }
+      } else if (meltSubState.startsWith("report")) {
+        setProductionState('Correction Required');
+      } else if (meltSubState === "melting_2") {
+        if (hasActiveAnomaly) {
+          setProductionState('Anomaly Detection');
+        } else {
+          setProductionState('Melting');
+        }
+      } else if (meltSubState === "ready_to_tap") {
+        const isCompOk = isCompositionWithinTolerance();
+        if (isCompOk) {
+          setProductionState('Composition Approved');
+        } else {
+          setProductionState('Ready To Tap');
+        }
+      } else if (meltSubState === "pouring") {
+        setProductionState('Tapping Animation');
+      } else if (meltSubState === "completed") {
+        setProductionState('Batch Completed');
+      }
+    } else if (currentStep === 5) {
+      setProductionState('Production Report');
+    }
+  }, [currentStep, meltSubState, meltTemperature, guidedStep, alertsList, currentComposition]);
+
+  // Composition Checker
+  const isCompositionWithinTolerance = () => {
+    if (!selectedAlloy || !selectedAlloy.composition) return false;
+    for (const [symbol, targetVal] of Object.entries(selectedAlloy.composition)) {
+      const measuredVal = currentComposition[symbol] || 0.0;
+      const targetValNum = targetVal as number;
+      const dev = Math.abs(measuredVal - targetValNum);
+      const tolerance = targetValNum * 0.03; // 3% tolerance
+      if (dev > tolerance) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const hasActiveCriticalAnomaly = () => {
+    return alertsList.some(alert => alert.priority === 3 && alert.status !== 'resolved' && alert.status !== 'closed');
+  };
+
+  // Automate transition from ready_to_tap to pouring (tapping animation)
+  useEffect(() => {
+    if (currentStep !== 4 || meltSubState !== "ready_to_tap") return;
+
+    const isCompOk = isCompositionWithinTolerance();
+    const hasCritAnomaly = hasActiveCriticalAnomaly();
+    const isBlocked = !isCompOk || hasCritAnomaly || emergencyStop;
+
+    if (!isBlocked) {
+      // Speak ready to tap message
+      voiceSafetyService.speak("Composition has been verified successfully. The furnace is now ready for tapping.", 1, "ready_to_tap_announcement");
+
+      // Automatically transition to pouring after 3 seconds
+      const timer = setTimeout(() => {
+        setMeltSubState("pouring");
+        voiceSafetyService.speak("Tapping operation has started.", 1, "tapping_started_announcement");
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep, meltSubState, emergencyStop, currentComposition, alertsList]);
+
+  const exportToCSV = () => {
+    const rows = [
+      ["Report Field", "Value"],
+      ["Batch ID", `BATCH-${selectedAlloy.grade}-${spectrometerScansCount}`],
+      ["Alloy Grade", selectedAlloy.grade],
+      ["Target Mass", `${batchWeight} ${weightUnit}`],
+      ["Final Composition", Object.entries(currentComposition).map(([k, v]) => `${k}:${v}%`).join("; ")],
+      ["Raw Material Consumption", additionsApplied.join("; ")],
+      ["Spectrometer Results", `${spectrometerScansCount} scans conducted`],
+      ["Energy Consumption", "5,540 kWh"],
+      ["AI Recommendations", "Optimize Chromium and Nickel weights for final alloy grade specification"],
+      ["Anomalies Detected", sessionAlerts.map(a => a.title).join("; ") || "None"],
+      ["Corrective Actions Applied", additionsApplied.join("; ")],
+      ["Voice Alerts Log", sessionAlerts.map(a => `${a.title}: ${a.message}`).join("; ") || "None"],
+      ["Production Timeline", "Melt: 35m, Refine: 28m, Pour: 15m"],
+      ["Quality Status", "Verified Compliant"],
+      ["Final Pass/Fail", "PASS"],
+      ["Operator Details", "op_watas (Senior Smelting Operator)"],
+      ["Timestamp", new Date().toLocaleString()]
+    ];
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `production_report_${selectedAlloy.grade}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({ title: "CSV Exported", description: "Production report CSV downloaded successfully." });
+  };
+
+  const exportToPDF = () => {
+    const pdf = new jsPDF();
+    pdf.setFontSize(18);
+    pdf.setTextColor(0, 100, 150);
+    pdf.text("METALLISENSE PRODUCTION REPORT", 20, 20);
+    
+    pdf.setFontSize(10);
+    pdf.setTextColor(50, 50, 50);
+    let y = 35;
+    const addLine = (label: string, value: string) => {
+      pdf.setFont("helvetica", "bold");
+      pdf.text(`${label}:`, 20, y);
+      pdf.setFont("helvetica", "normal");
+      const splitVal = pdf.splitTextToSize(value, 120);
+      pdf.text(splitVal, 75, y);
+      y += (splitVal.length * 7);
+      if (y > 270) {
+        pdf.addPage();
+        y = 20;
+      }
+    };
+
+    const batchId = `BATCH-${selectedAlloy.grade}-${spectrometerScansCount}`;
+    addLine("Batch ID", batchId);
+    addLine("Alloy Grade", selectedAlloy.grade);
+    addLine("Target Mass", `${batchWeight} ${weightUnit}`);
+    addLine("Final Composition", Object.entries(currentComposition).map(([k, v]) => `${k}:${v}%`).join(", "));
+    addLine("Raw Material Consumption", additionsApplied.join(", ") || "No additional materials added");
+    addLine("Spectrometer Results", `${spectrometerScansCount} scans conducted`);
+    addLine("Furnace Temp History", "1350°C -> 1492°C -> 1200°C -> 1580°C -> 1600°C -> 1550°C");
+    addLine("Energy Consumption", "5,540 kWh");
+    addLine("AI Recommendations", "Optimize Chromium and Nickel weights for final alloy grade specification");
+    addLine("Anomalies Detected", sessionAlerts.map(a => a.title).join(", ") || "None");
+    addLine("Corrective Actions Applied", additionsApplied.join(", ") || "None");
+    addLine("Voice Alerts Log", sessionAlerts.map(a => `${a.title}: ${a.message}`).join("; ").substring(0, 150) + "..." || "None");
+    addLine("Production Timeline", "Melt: 35 min, Refine: 28 min, Pour: 15 min");
+    addLine("Quality Status", "Verified Compliant");
+    addLine("Final Pass/Fail", "PASS");
+    addLine("Operator Details", "op_watas (Senior Smelting Operator)");
+    addLine("Timestamp", new Date().toLocaleString());
+
+    pdf.save(`production_report_${selectedAlloy.grade}.pdf`);
+    toast({ title: "PDF Exported", description: "Production report PDF downloaded successfully." });
+  };
   
   // Canvases
   const oesCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -859,9 +1058,21 @@ export const Dashboard = () => {
       const cy = height / 2;
 
       // 1. Draw tilted furnace body (induction coil cylinder rotated)
+      // Tilts down from 0 to 50 (angle goes 0 to 45 degrees)
+      // Pours/stays from 50 to 110 (angle stays at 45 degrees)
+      // Tilts back upright from 110 to 150 (angle goes from 45 back to 0 degrees)
+      let angle = 0;
+      if (t < 50) {
+        angle = (t / 50) * 45;
+      } else if (t < 110) {
+        angle = 45;
+      } else {
+        angle = Math.max(0, 45 - ((t - 110) / 40) * 45);
+      }
+
       ctx.save();
       ctx.translate(cx - 60, cy);
-      ctx.rotate((Math.min(45, t/3) * Math.PI) / 180);
+      ctx.rotate((angle * Math.PI) / 180);
       
       ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
       ctx.lineWidth = 3;
@@ -883,7 +1094,8 @@ export const Dashboard = () => {
       ctx.restore();
 
       // 2. Draw Molten Pour stream falling down
-      if (t > 15) {
+      // Only draw the stream while the furnace is tilted and pouring
+      if (t > 15 && t < 115) {
         ctx.strokeStyle = 'rgba(255, 140, 0, 0.95)';
         ctx.lineWidth = 6;
         ctx.shadowBlur = 10;
@@ -925,6 +1137,7 @@ export const Dashboard = () => {
         // Complete Tapping, move to final report
         setMeltSubState("completed");
         setCurrentStep(5); // Complete batch, show reports!
+        voiceSafetyService.speak("Tapping completed successfully.", 1, "tapping_completed_announcement");
       }
     };
 
@@ -971,7 +1184,11 @@ export const Dashboard = () => {
         // Si/Ni was low. Stabilize.
         if (updated.Ni) updated.Ni = selectedAlloy.composition.Ni;
         if (updated.Si) updated.Si = selectedAlloy.composition.Si;
-        updated.Fe = roundVal(100.0 - Object.entries(updated).filter(([k]) => k !== "Fe").reduce((acc, [_, v]) => acc + v, 0));
+        
+        // Also stabilize all other alloyed elements to target spec
+        for (const el in selectedAlloy.composition) {
+          updated[el] = selectedAlloy.composition[el];
+        }
         
         // Automatically perform another spectrometer analysis validation check
         setSpectrometerProgress(0);
@@ -1113,7 +1330,7 @@ export const Dashboard = () => {
         {/* Main Content Pane */}
         <div className="pl-64 flex-1 flex flex-col min-h-[calc(100vh-73px)]">
           {/* Top Progress chain indicator */}
-          <div className="bg-slate-950/30 border-b border-slate-900/60 p-4 sticky top-[73px] z-20 backdrop-blur-md">
+          <div className="bg-slate-950/30 border-b border-slate-900/60 p-4 sticky top-[73px] z-20 backdrop-blur-md flex justify-between items-center">
             <div className="flex items-center space-x-2 overflow-x-auto whitespace-nowrap text-[10px] font-mono text-slate-500 pb-1 scrollbar-none">
               {stepsList.map((step, idx) => (
                 <React.Fragment key={step.id}>
@@ -1124,6 +1341,9 @@ export const Dashboard = () => {
                 </React.Fragment>
               ))}
             </div>
+            <Badge className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono text-[9px] uppercase tracking-wider font-bold">
+              STATE: {productionState.replace('_', ' ')}
+            </Badge>
           </div>
 
           {/* Main workspace */}
@@ -1320,15 +1540,25 @@ export const Dashboard = () => {
                   </div>
                 </div>
 
-                <div className="flex justify-between pt-4 border-t border-slate-900/60">
-                  <Button onClick={handleBack} variant="outline" className="glass-button text-xs">
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Back
-                  </Button>
-                  <Button onClick={() => handleNext()} className="bg-primary hover:bg-primary/90 text-slate-950 font-bold text-xs">
-                    Next: Enter Batch Size
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
+                {/* Floating sticky navigation container */}
+                <div className="fixed bottom-6 right-6 z-50 bg-slate-950/90 border border-cyan-500/30 rounded-xl p-4 shadow-[0_4px_25px_rgba(0,0,0,0.7)] flex items-center space-x-4 backdrop-blur-md animate-fade-in-up">
+                  <div className="text-left font-mono max-w-[180px]">
+                    <div className="text-slate-500 text-[9px] uppercase tracking-wider font-bold">Active Choice</div>
+                    <div className="text-white text-xs font-bold truncate">{selectedAlloy.name}</div>
+                    <div className="text-cyan-400 text-[10px]">{selectedAlloy.grade}</div>
+                  </div>
+                  <div className="flex space-x-2 border-l border-slate-900 pl-4">
+                    <Button onClick={handleBack} variant="outline" className="glass-button text-xs h-9">
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      onClick={() => handleNext()} 
+                      className="bg-gradient-to-r from-cyan-400 to-blue-600 hover:from-cyan-500 hover:to-blue-700 text-slate-950 font-black text-xs h-9 px-4 shadow-[0_0_12px_rgba(0,243,255,0.2)]"
+                    >
+                      Proceed
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1556,6 +1786,8 @@ export const Dashboard = () => {
                         });
                         
                         // 4. Update local state and proceed
+                        setReportGenerated(false);
+                        setSessionAlerts([]);
                         setIsMeltingActive(true);
                         setMeltProgress(0);
                         setMeltTemperature(1200);
@@ -1862,7 +2094,8 @@ export const Dashboard = () => {
                     </div>
                     <div className="space-y-2">
                       <h2 className="text-xl font-bold font-outfit text-white uppercase tracking-wider">Composition Verified</h2>
-                      <p className="text-sm font-mono text-emerald-400">Furnace Ready for Tapping</p>
+                      <p className="text-sm font-mono text-emerald-400 font-bold">BATCH APPROVED</p>
+                      <p className="text-sm font-mono text-emerald-400">READY FOR TAPPING</p>
                       <p className="text-xs text-slate-400 mt-2 font-outfit leading-relaxed">
                         Validation scan complete. Alloy chemistry is fully compliant with grade specifications. Ready to discharge molten steel.
                       </p>
@@ -1881,87 +2114,41 @@ export const Dashboard = () => {
             {/* STEP 5: Final Production Report */}
             {currentStep === 5 && (
               <div className="space-y-8 animate-fade-in-up">
-                <div className="text-center max-w-2xl mx-auto mb-8">
-                  <div className="inline-flex p-3 bg-emerald-950 border border-emerald-500/30 text-emerald-400 rounded-full mb-3">
-                    <Award className="h-8 w-8 animate-bounce" />
-                  </div>
-                  <h2 className="text-3xl font-black font-outfit tracking-tight text-white uppercase mb-2">Alloy Specification Achieved</h2>
-                  <p className="text-xs font-mono text-cyan-400">Smelting successfully complete • Compliance verified</p>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Left: final composition table */}
-                  <Card className="bg-card border-slate-900 shadow-xl">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-xs font-mono text-cyan-400 uppercase tracking-widest">Final Measured Compositions</CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                      <table className="w-full text-left border-collapse text-xs font-mono">
-                        <thead>
-                          <tr className="text-slate-500 uppercase border-b border-slate-900 pb-2">
-                            <th className="pb-2">Element</th>
-                            <th className="pb-2 text-right">Target %</th>
-                            <th className="pb-2 text-right">Final %</th>
-                            <th className="pb-2 text-right">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(selectedAlloy.composition).map(([symbol, targetVal]) => {
-                            const finalVal = currentComposition[symbol] || 0.0;
-                            return (
-                              <tr key={symbol} className="border-b border-slate-900/60 py-2">
-                                <td className="py-2 font-bold text-white">{symbol}</td>
-                                <td className="py-2 text-right text-slate-400">{targetVal}%</td>
-                                <td className="py-2 text-right text-white font-bold">{finalVal}%</td>
-                                <td className="py-2 text-right text-emerald-400 font-bold">✓ COMPLIANT</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </CardContent>
-                  </Card>
-
-                  {/* Right: run stats log */}
-                  <Card className="bg-card border-slate-900 p-6 space-y-4 text-xs font-mono">
-                    <h3 className="text-xs font-mono text-cyan-400 uppercase tracking-widest">Smelting Audit Log</h3>
-                    
-                    <div className="flex justify-between border-b border-slate-900 pb-2">
-                      <span className="text-slate-400">Spectrometer Runs:</span>
-                      <span className="text-white font-bold">{spectrometerScansCount} scans</span>
+                {!reportGenerated ? (
+                  <Card className="bg-slate-950/80 border border-emerald-500/25 p-8 max-w-xl mx-auto text-center space-y-6 shadow-[0_0_30px_rgba(16,185,129,0.15)] my-12 animate-fade-in">
+                    <div className="w-16 h-16 bg-emerald-950 border border-emerald-400 rounded-full flex items-center justify-center mx-auto text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] animate-pulse">
+                      <CheckCircle2 className="h-8 w-8" />
                     </div>
-                    <div className="flex justify-between border-b border-slate-900 pb-2">
-                      <span className="text-slate-400">Total Alloy Additions:</span>
-                      <span className="text-white font-bold">{additionsApplied.length} adjustings</span>
+                    <div className="space-y-2">
+                      <h2 className="text-xl font-bold font-outfit text-white uppercase tracking-wider">Batch Completed</h2>
+                      <p className="text-sm font-mono text-emerald-400">Production Successful</p>
+                      <p className="text-xs text-slate-400 mt-2 font-outfit leading-relaxed">
+                        The tapping operation was completed successfully. The molten alloy is safely transferred. Would you like to generate the production report now?
+                      </p>
                     </div>
-                    <div className="flex justify-between border-b border-slate-900 pb-2">
-                      <span className="text-slate-400">Energy Consumption:</span>
-                      <span className="text-yellow-400 font-bold">5,540 kWh</span>
-                    </div>
-                    <div className="flex justify-between border-b border-slate-900 pb-2">
-                      <span className="text-slate-400">Smelting Run Time:</span>
-                      <span className="text-white font-bold">78 minutes</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">AI Quality Score:</span>
-                      <span className="text-emerald-400 font-bold">98.22%</span>
-                    </div>
-
-                    <div className="pt-4 border-t border-slate-900 flex space-x-2">
+                    <div className="grid grid-cols-1 gap-3">
                       <Button 
-                        onClick={() => {
-                          const pdf = new jsPDF();
-                          pdf.text(`Alloy Production Batch Summary - ${selectedAlloy.name}`, 20, 20);
-                          pdf.text(`Yield Level: 98.4%`, 20, 30);
-                          pdf.text(`Spectrometer Scans: ${spectrometerScansCount}`, 20, 40);
-                          pdf.text(`Quality Compliance: PASS`, 20, 50);
-                          pdf.save(`oes_batch_report_${selectedAlloy.grade}.pdf`);
-                          alert("PDF exported successfully!");
-                        }}
-                        className="bg-primary hover:bg-primary/90 text-slate-950 font-black text-xs flex-1 py-5"
+                        onClick={() => setReportGenerated(true)}
+                        className="bg-gradient-to-r from-emerald-400 to-teal-600 hover:from-emerald-500 hover:to-teal-700 text-slate-950 font-black py-5 rounded-lg text-xs uppercase tracking-wider"
                       >
-                        Download PDF Report
+                        Generate Report
                       </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button 
+                          onClick={exportToPDF}
+                          variant="outline"
+                          className="glass-button text-[10px] font-bold h-10 border-slate-800"
+                        >
+                          Download PDF
+                        </Button>
+                        <Button 
+                          onClick={exportToCSV}
+                          variant="outline"
+                          className="glass-button text-[10px] font-bold h-10 border-slate-800"
+                        >
+                          Export CSV
+                        </Button>
+                      </div>
                       <Button 
                         onClick={async () => {
                           try {
@@ -1973,14 +2160,206 @@ export const Dashboard = () => {
                           setMeltProgress(0);
                           setMeltSubState("initial_melting");
                           setGuidedStep(0);
+                          setReportGenerated(false);
                         }}
-                        className="glass-button text-xs flex-1 py-5"
+                        variant="ghost"
+                        className="text-slate-400 hover:text-white text-xs py-3"
                       >
-                        New Production Batch
+                        Return to Dashboard
                       </Button>
                     </div>
                   </Card>
-                </div>
+                ) : (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="flex justify-between items-center border-b border-slate-900 pb-4">
+                      <div>
+                        <h2 className="text-2xl font-bold font-outfit text-white uppercase flex items-center">
+                          <FileText className="h-6 w-6 mr-2 text-cyan-400" />
+                          Production Batch Audit Report
+                        </h2>
+                        <p className="text-xs font-mono text-cyan-400">Batch Compliance & Spectrometry Verification Summary</p>
+                      </div>
+                      <Button 
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setReportGenerated(false)}
+                        className="glass-button text-[10px] font-mono"
+                      >
+                        ← Back to Prompt
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                      {/* Left Side: Report Details */}
+                      <Card className="lg:col-span-8 bg-card border-slate-900 shadow-xl p-6 space-y-6">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-6 border-b border-slate-900 pb-6 text-xs font-mono">
+                          <div>
+                            <span className="text-slate-500 block">BATCH ID</span>
+                            <span className="text-white font-bold text-sm">BATCH-{selectedAlloy.grade}-{spectrometerScansCount}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">ALLOY GRADE</span>
+                            <span className="text-white font-bold text-sm">{selectedAlloy.grade}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">TARGET MASS</span>
+                            <span className="text-white font-bold text-sm">{batchWeight} {weightUnit}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">QUALITY COMPLIANCE</span>
+                            <Badge className="bg-emerald-950/80 text-emerald-400 border border-emerald-500/20 text-[9px] font-mono mt-1">PASS (98.22%)</Badge>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">ENERGY CONSUMED</span>
+                            <span className="text-yellow-400 font-bold">5,540 kWh</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block">OPERATOR DETAILS</span>
+                            <span className="text-white font-bold">op_watas (Senior Smelting Operator)</span>
+                          </div>
+                        </div>
+
+                        {/* Compositions */}
+                        <div className="space-y-3">
+                          <h3 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">Final Composition Matrix</h3>
+                          <table className="w-full text-left border-collapse text-xs font-mono">
+                            <thead>
+                              <tr className="text-slate-500 uppercase border-b border-slate-900 pb-2">
+                                <th className="pb-2">Element</th>
+                                <th className="pb-2 text-right">Target %</th>
+                                <th className="pb-2 text-right">Final %</th>
+                                <th className="pb-2 text-right">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries(selectedAlloy.composition).map(([symbol, targetVal]) => {
+                                const finalVal = currentComposition[symbol] || 0.0;
+                                return (
+                                  <tr key={symbol} className="border-b border-slate-900/60 py-2">
+                                    <td className="py-2 font-bold text-white">{symbol}</td>
+                                    <td className="py-2 text-right text-slate-400">{targetVal}%</td>
+                                    <td className="py-2 text-right text-white font-bold">{finalVal}%</td>
+                                    <td className="py-2 text-right text-emerald-400 font-bold">✓ COMPLIANT</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Raw materials consumed */}
+                        <div className="space-y-2 font-mono text-xs">
+                          <h3 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">Raw Material Additions Applied</h3>
+                          <div className="p-3 bg-slate-950/40 border border-slate-900 rounded-lg text-slate-300 space-y-1">
+                            {additionsApplied.length > 0 ? (
+                              additionsApplied.map((add, i) => (
+                                <div key={i} className="flex justify-between">
+                                  <span>Trim Addition #{i + 1}:</span>
+                                  <span className="text-white font-bold">{add}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-slate-500 italic">No trim additions required. Initial loading matches specification.</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Timeline */}
+                        <div className="space-y-2 font-mono text-xs">
+                          <h3 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">Production Timeline</h3>
+                          <div className="grid grid-cols-3 gap-2 p-3 bg-slate-950/40 border border-slate-900 rounded-lg text-center">
+                            <div>
+                              <span className="text-slate-500 block text-[9px]">MELTING</span>
+                              <span className="text-white font-bold">35 mins</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block text-[9px]">REFINING</span>
+                              <span className="text-white font-bold">28 mins</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block text-[9px]">POURING</span>
+                              <span className="text-white font-bold">15 mins</span>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* Right Side: Logs & Actions */}
+                      <div className="lg:col-span-4 space-y-6 font-mono text-xs">
+                        {/* Session Alerts log */}
+                        <Card className="bg-card border-slate-900 p-6 space-y-4">
+                          <h3 className="text-xs font-mono text-red-400 uppercase tracking-widest font-bold flex items-center">
+                            <ShieldAlert className="h-4 w-4 mr-1.5 text-red-500" />
+                            Anomalies & Voice Alerts Log
+                          </h3>
+                          <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+                            {sessionAlerts.length > 0 ? (
+                              sessionAlerts.map((a, i) => (
+                                <div key={i} className="p-2 bg-slate-950/40 border border-slate-900 rounded-lg text-[10px]">
+                                  <div className="flex justify-between font-bold text-slate-200">
+                                    <span>{a.title}</span>
+                                    <span className={a.priority === 3 ? "text-red-400" : "text-yellow-400"}>LVL {a.priority}</span>
+                                  </div>
+                                  <p className="text-slate-400 mt-1 leading-relaxed">{a.message}</p>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-slate-500 italic text-center py-4">No anomalies detected during this smelting run.</div>
+                            )}
+                          </div>
+                        </Card>
+
+                        {/* Recommendations */}
+                        <Card className="bg-card border-slate-900 p-6 space-y-3">
+                          <h3 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">AI Autopilot Recommendations</h3>
+                          <p className="text-[11px] text-slate-300 leading-relaxed font-outfit">
+                            AI recommended trim adjustments based on optical emission spectrometry logs:
+                            - Add 28.0 kg Ferrochrome (Cr trim)
+                            - Add 3.2 kg Ferrosilicon (Si trim)
+                          </p>
+                        </Card>
+
+                        {/* Export Panel */}
+                        <Card className="bg-slate-950/40 border border-slate-900 p-6 space-y-3">
+                          <h3 className="text-xs font-mono text-slate-400 uppercase tracking-widest font-bold">Export Panel</h3>
+                          <div className="grid grid-cols-1 gap-2.5">
+                            <Button 
+                              onClick={exportToPDF}
+                              className="bg-primary hover:bg-primary/90 text-slate-950 font-black w-full"
+                            >
+                              Download PDF
+                            </Button>
+                            <Button 
+                              onClick={exportToCSV}
+                              variant="outline"
+                              className="glass-button w-full border-slate-800 font-bold"
+                            >
+                              Export CSV
+                            </Button>
+                            <Button 
+                              onClick={async () => {
+                                try {
+                                  await dataService.updateSmeltingRun({ is_active: false, status: 'STANDBY' });
+                                } catch (e) {
+                                  console.error(e);
+                                }
+                                setCurrentStep(0);
+                                setMeltProgress(0);
+                                setMeltSubState("initial_melting");
+                                setGuidedStep(0);
+                                setReportGenerated(false);
+                              }}
+                              variant="ghost"
+                              className="text-slate-400 hover:text-white font-bold w-full"
+                            >
+                              Return to Dashboard
+                            </Button>
+                          </div>
+                        </Card>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

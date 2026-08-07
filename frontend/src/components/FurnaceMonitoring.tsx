@@ -314,8 +314,12 @@ export const FurnaceMonitoring = () => {
         };
       };
 
+      const isMeltActive = activeBatch && 
+                           activeBatch.status !== 'STANDBY' && 
+                           activeBatch.status !== 'COMPLETED';
+
       // Spawning sparks and smoke
-      if (activeBatch && Math.random() < 0.15) {
+      if (isMeltActive && Math.random() < 0.15) {
         sparks.push({
           x: (Math.random() - 0.5) * 50,
           y: 40, // molten surface height
@@ -326,7 +330,7 @@ export const FurnaceMonitoring = () => {
         });
       }
 
-      if (activeBatch && Math.random() < 0.1) {
+      if (isMeltActive && Math.random() < 0.1) {
         smokePuffs.push({
           x: (Math.random() - 0.5) * 40,
           y: 50,
@@ -355,7 +359,7 @@ export const FurnaceMonitoring = () => {
           else ctx.lineTo(pt.x, pt.y);
         }
         ctx.closePath();
-        ctx.strokeStyle = coilY === 0 ? 'rgba(0, 243, 255, 0.4)' : 'rgba(148, 163, 184, 0.15)';
+        ctx.strokeStyle = isMeltActive && coilY === 0 ? 'rgba(0, 243, 255, 0.4)' : 'rgba(148, 163, 184, 0.15)';
         ctx.stroke();
       }
 
@@ -374,34 +378,34 @@ export const FurnaceMonitoring = () => {
       }
 
       // 2. Draw Molten Liquid Pool (glowing ellipse at Y = 20)
-      const liquidRadius = 60;
-      waveOffset += 0.05;
-      
-      // Calculate projected molten surface polygon
-      const moltenPts: {x: number, y: number}[] = [];
-      for (let i = 0; i < segments; i++) {
-        const theta = (i / segments) * Math.PI * 2;
-        // add subtle wave offset
-        const rOffset = Math.sin(theta * 3 + waveOffset) * 2;
-        const px = (liquidRadius + rOffset) * Math.cos(theta);
-        const pz = (liquidRadius + rOffset) * Math.sin(theta);
-        const pt = project(px, 20, pz);
-        moltenPts.push(pt);
-      }
+      if (isMeltActive) {
+        const liquidRadius = 60;
+        waveOffset += 0.05;
+        
+        // Calculate projected molten surface polygon
+        const moltenPts: {x: number, y: number}[] = [];
+        for (let i = 0; i < segments; i++) {
+          const theta = (i / segments) * Math.PI * 2;
+          // add subtle wave offset
+          const rOffset = Math.sin(theta * 3 + waveOffset) * 2;
+          const px = (liquidRadius + rOffset) * Math.cos(theta);
+          const pz = (liquidRadius + rOffset) * Math.sin(theta);
+          const pt = project(px, 20, pz);
+          moltenPts.push(pt);
+        }
 
-      ctx.beginPath();
-      moltenPts.forEach((pt, idx) => {
-        if (idx === 0) ctx.moveTo(pt.x, pt.y);
-        else ctx.lineTo(pt.x, pt.y);
-      });
-      ctx.closePath();
+        ctx.beginPath();
+        moltenPts.forEach((pt, idx) => {
+          if (idx === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
 
-      // Liquid gradient (molten gold to red OR cold solid grey if standby)
-      const moltenGrad = ctx.createRadialGradient(
-        centerX, centerY + 20, 5,
-        centerX, centerY + 20, 80 * zoom
-      );
-      if (activeBatch) {
+        // Liquid gradient
+        const moltenGrad = ctx.createRadialGradient(
+          centerX, centerY + 20, 5,
+          centerX, centerY + 20, 80 * zoom
+        );
         moltenGrad.addColorStop(0, '#ffe57f'); // Bright core
         moltenGrad.addColorStop(0.3, '#ff9100'); // Orange heat
         moltenGrad.addColorStop(0.8, '#ff3d00'); // Red slag crust
@@ -409,31 +413,24 @@ export const FurnaceMonitoring = () => {
         ctx.fillStyle = moltenGrad;
         ctx.shadowBlur = 30;
         ctx.shadowColor = 'rgba(255, 107, 0, 0.6)';
-      } else {
-        moltenGrad.addColorStop(0, '#475569'); // Cool slate grey core
-        moltenGrad.addColorStop(0.5, '#334155'); // Darker slate
-        moltenGrad.addColorStop(1, '#1e293b');   // Cold edge
-        ctx.fillStyle = moltenGrad;
-        ctx.shadowBlur = 0;
-        ctx.shadowColor = 'transparent';
-      }
-      ctx.fill();
-      ctx.shadowBlur = 0; // reset
+        ctx.fill();
+        ctx.shadowBlur = 0; // reset
 
-      // Thermal waves across molten surface
-      ctx.strokeStyle = 'rgba(255, 230, 0, 0.2)';
-      ctx.lineWidth = 1;
-      for (let offset = -40; offset <= 40; offset += 15) {
-        ctx.beginPath();
-        for (let i = 0; i <= segments; i++) {
-          const theta = (i / segments) * Math.PI * 2;
-          const px = offset + 2 * Math.cos(theta * 2 + waveOffset);
-          const pz = Math.sqrt(Math.max(0, liquidRadius**2 - px**2)) * (i > segments/2 ? -1 : 1);
-          const pt = project(px, 20, pz);
-          if (i === 0) ctx.moveTo(pt.x, pt.y);
-          else ctx.lineTo(pt.x, pt.y);
+        // Thermal waves across molten surface
+        ctx.strokeStyle = 'rgba(255, 230, 0, 0.2)';
+        ctx.lineWidth = 1;
+        for (let offset = -40; offset <= 40; offset += 15) {
+          ctx.beginPath();
+          for (let i = 0; i <= segments; i++) {
+            const theta = (i / segments) * Math.PI * 2;
+            const px = offset + 2 * Math.cos(theta * 2 + waveOffset);
+            const pz = Math.sqrt(Math.max(0, liquidRadius**2 - px**2)) * (i > segments/2 ? -1 : 1);
+            const pt = project(px, 20, pz);
+            if (i === 0) ctx.moveTo(pt.x, pt.y);
+            else ctx.lineTo(pt.x, pt.y);
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
       }
 
       // 3. Draw Sparks
@@ -480,42 +477,44 @@ export const FurnaceMonitoring = () => {
       }
 
       // 5. Draw Holographic Labels pointing to the core
-      const labels = [
-        { label: `Fe: ${composition.Fe}%`, dx: -90, dy: -40, color: 'rgba(56, 189, 248, 0.85)' },
-        { label: `Cr: ${composition.Cr}%`, dx: -90, dy: 10, color: 'rgba(0, 243, 255, 0.85)' },
-        { label: `Ni: ${composition.Ni}%`, dx: -90, dy: 60, color: 'rgba(168, 85, 247, 0.85)' },
-        { label: `Mn: ${composition.Mn}%`, dx: 95, dy: -30, color: 'rgba(236, 72, 153, 0.85)' },
-        { label: `Si: ${composition.Si}%`, dx: 95, dy: 30, color: 'rgba(251, 146, 60, 0.85)' }
-      ];
+      if (isMeltActive) {
+        const labels = [
+          { label: `Fe: ${composition.Fe}%`, dx: -90, dy: -40, color: 'rgba(56, 189, 248, 0.85)' },
+          { label: `Cr: ${composition.Cr}%`, dx: -90, dy: 10, color: 'rgba(0, 243, 255, 0.85)' },
+          { label: `Ni: ${composition.Ni}%`, dx: -90, dy: 60, color: 'rgba(168, 85, 247, 0.85)' },
+          { label: `Mn: ${composition.Mn}%`, dx: 95, dy: -30, color: 'rgba(236, 72, 153, 0.85)' },
+          { label: `Si: ${composition.Si}%`, dx: 95, dy: 30, color: 'rgba(251, 146, 60, 0.85)' }
+        ];
 
-      ctx.lineWidth = 1;
-      labels.forEach((l) => {
-        const targetPt = project((l.dx > 0 ? 30 : -30), 20, 0);
-        const textX = targetPt.x + l.dx;
-        const textY = targetPt.y + l.dy;
+        ctx.lineWidth = 1;
+        labels.forEach((l) => {
+          const targetPt = project((l.dx > 0 ? 30 : -30), 20, 0);
+          const textX = targetPt.x + l.dx;
+          const textY = targetPt.y + l.dy;
 
-        // Draw dotted pointer line
-        ctx.beginPath();
-        ctx.moveTo(targetPt.x, targetPt.y);
-        ctx.lineTo(textX + (l.dx > 0 ? 0 : 50), textY + 5);
-        ctx.strokeStyle = 'rgba(0, 243, 255, 0.25)';
-        ctx.setLineDash([2, 3]);
-        ctx.stroke();
-        ctx.setLineDash([]);
+          // Draw dotted pointer line
+          ctx.beginPath();
+          ctx.moveTo(targetPt.x, targetPt.y);
+          ctx.lineTo(textX + (l.dx > 0 ? 0 : 50), textY + 5);
+          ctx.strokeStyle = 'rgba(0, 243, 255, 0.25)';
+          ctx.setLineDash([2, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
 
-        // Holographic bubble box
-        ctx.fillStyle = 'rgba(6, 8, 12, 0.85)';
-        ctx.strokeStyle = l.color;
-        ctx.beginPath();
-        ctx.roundRect(textX - 5, textY - 12, 75, 22, 6);
-        ctx.fill();
-        ctx.stroke();
+          // Holographic bubble box
+          ctx.fillStyle = 'rgba(6, 8, 12, 0.85)';
+          ctx.strokeStyle = l.color;
+          ctx.beginPath();
+          ctx.roundRect(textX - 5, textY - 12, 75, 22, 6);
+          ctx.fill();
+          ctx.stroke();
 
-        // Element text
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 11px JetBrains Mono';
-        ctx.fillText(l.label, textX, textY + 3);
-      });
+          // Element text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 11px JetBrains Mono';
+          ctx.fillText(l.label, textX, textY + 3);
+        });
+      }
 
       animId = requestAnimationFrame(drawTwin);
     };
@@ -525,7 +524,7 @@ export const FurnaceMonitoring = () => {
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [angleX, angleY, zoom, composition]);
+  }, [angleX, angleY, zoom, composition, activeBatch]);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     isDragging.current = true;

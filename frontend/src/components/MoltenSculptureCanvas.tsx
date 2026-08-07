@@ -1,14 +1,14 @@
 import React, { useRef, useEffect } from 'react';
+import * as THREE from 'three';
 
 export const MoltenSculptureCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const uniformsRef = useRef({
-    time: 0,
     mouse: { x: 0, y: 0, targetX: 0, targetY: 0 }
   });
 
-  // Track mouse coordinates over the canvas for subtle parallax tilting
+  // Track mouse coordinates for smooth 3D tilt interaction
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -27,289 +27,308 @@ export const MoltenSculptureCanvas: React.FC = () => {
     const container = containerRef.current;
     if (!canvas || !container) return;
 
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    if (!gl) {
-      console.warn('WebGL is not supported inside this component.');
-      return;
-    }
+    // 1. Create Scene, Camera, and WebGL Renderer
+    const scene = new THREE.Scene();
 
-    // Vertex shader source
-    const vsSource = `
-      attribute vec2 aPosition;
-      varying vec2 vUv;
-      void main() {
-        vUv = aPosition * 0.5 + 0.5;
-        gl_Position = vec4(aPosition, 0.0, 1.0);
-      }
-    `;
+    const camera = new THREE.PerspectiveCamera(
+      45,
+      container.clientWidth / container.clientHeight,
+      0.1,
+      100
+    );
+    camera.position.set(0, 0, 3.8);
 
-    // Fragment shader source (Raymarching PBR metallic sculpture with environment reflections)
-    const fsSource = `
-      precision highp float;
-      varying vec2 vUv;
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance'
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setClearColor(0x000000, 0); // Transparent background to blend cleanly
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.25;
 
-      uniform vec2 uResolution;
-      uniform float uTime;
-      uniform vec2 uMouse;
+    // 2. Generate Dynamic PMREM Environment Map (Chrome reflections)
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    pmremGenerator.compileEquirectangularShader();
 
-      // 3D Simplex-style noise for volumetric reflections
-      float hash(vec3 p) {
-        p = fract(p * vec3(443.897, 441.423, 437.195));
-        p += dot(p, p.yzx + 19.19);
-        return fract((p.x + p.y) * p.z);
-      }
-      
-      float noise3D(vec3 x) {
-        vec3 p = floor(x);
-        vec3 f = fract(x);
-        f = f*f*(3.0-2.0*f);
-        return mix(mix(mix(hash(p+vec3(0,0,0)), hash(p+vec3(1,0,0)), f.x),
-                       mix(hash(p+vec3(0,1,0)), hash(p+vec3(1,1,0)), f.x), f.y),
-                   mix(mix(hash(p+vec3(0,0,1)), hash(p+vec3(1,0,1)), f.x),
-                       mix(hash(p+vec3(0,1,1)), hash(p+vec3(1,1,1)), f.x), f.y), f.z);
-      }
-
-      float envReflection(vec3 r) {
-        float val = noise3D(r * 2.5 + vec3(uTime * 0.07));
-        return 0.45 + 0.55 * val;
-      }
-
-      // Torus SDF definition (t.x = major radius, t.y = minor thickness)
-      float sdTorus(vec3 p, vec2 t) {
-        vec2 q = vec2(length(p.xz) - t.x, p.y);
-        return length(q) - t.y;
-      }
-
-      // SDF Map function defining the twisting ribbon sculpture
-      float map(vec3 p) {
-        vec3 p1 = p;
-        
-        // Continuous organic slow floating and spinning
-        float rotY = uTime * 0.16 + uMouse.x * 0.22;
-        float cy = cos(rotY);
-        float sy = sin(rotY);
-        p1.xz = mat2(cy, -sy, sy, cy) * p1.xz;
-
-        float rotX = sin(uTime * 0.1) * 0.12 + uMouse.y * 0.22;
-        float cx = cos(rotX);
-        float sx = sin(rotX);
-        p1.yz = mat2(cx, -sx, sx, cx) * p1.yz;
-
-        // Elegant Torus loop profile
-        float d = sdTorus(p1, vec2(1.15, 0.22));
-
-        // Organic waves twisting details
-        float twist = sin(p1.x * 3.5 + uTime * 0.4) * cos(p1.y * 3.5 + uTime * 0.6) * 0.08;
-        d += twist;
-
-        // Subtract interior core to create a hollow engineered shell
-        float hollow = length(p1.xy) - 0.72;
-        d = max(d, -hollow);
-
-        return d;
-      }
-
-      vec3 getNormal(vec3 p) {
-        vec2 e = vec2(0.005, 0.0);
-        return normalize(vec3(
-          map(p + e.xyy) - map(p - e.xyy),
-          map(p + e.yxy) - map(p - e.yxy),
-          map(p + e.yyx) - map(p - e.yyx)
-        ));
-      }
-
-      void main() {
-        // Center aspect ratio normalized coordinates
-        vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / uResolution.y;
-        
-        // Ray origin & direction
-        vec3 ro = vec3(0.0, 0.0, -3.0);
-        vec3 rd = normalize(vec3(uv, 1.2));
-        
-        float t = 0.0;
-        bool hit = false;
-        vec3 p;
-
-        for (int i = 0; i < 60; i++) {
-          p = ro + t * rd;
-          float d = map(p);
-          if (d < 0.001) {
-            hit = true;
-            break;
-          }
-          t += d;
-          if (t > 5.0) break;
-        }
-
-        vec3 color;
-
-        if (hit) {
-          vec3 n = getNormal(p);
-          vec3 viewDir = -rd;
-          vec3 reflectDir = reflect(rd, n);
-          float fresnel = pow(1.0 - max(dot(n, viewDir), 0.0), 3.8);
-
-          // Polished mirror chrome environment base
-          vec3 chromeColor = vec3(0.85, 0.88, 0.94) * envReflection(reflectDir);
-
-          // Molten Orange highlight from top-right source
-          vec3 lightDir1 = normalize(vec3(4.0, 4.0, -3.0));
-          float spec1 = pow(max(dot(reflectDir, lightDir1), 0.0), 32.0);
-          vec3 moltenGlow = vec3(1.0, 0.45, 0.08) * spec1 * 1.6;
-
-          // Electric Cyan highlight from bottom-left source
-          vec3 lightDir2 = normalize(vec3(-4.0, -3.0, -2.0));
-          float spec2 = pow(max(dot(reflectDir, lightDir2), 0.0), 64.0);
-          vec3 cyanGlow = vec3(0.0, 0.85, 1.0) * spec2 * 2.2;
-
-          // White specular key highlight
-          float spec3 = pow(max(dot(reflectDir, normalize(vec3(0.0, 5.0, 0.0))), 0.0), 128.0);
-          vec3 silverHighlight = vec3(0.95, 0.98, 1.0) * spec3 * 2.5;
-
-          // Glowing energy veins running along the hollow sculpture interior
-          float veins = noise3D(p * 5.0 + vec3(0.0, uTime * 0.6, 0.0));
-          veins = smoothstep(0.48, 0.65, veins);
-          vec3 energyVeins = vec3(0.0, 0.85, 1.0) * veins * 0.85;
-
-          color = chromeColor + energyVeins;
-          color = mix(color, vec3(0.92, 0.96, 1.0), fresnel * 0.58);
-          color += moltenGlow + cyanGlow + silverHighlight;
-        } else {
-          // Keep base space transparent/very dark to blend with landing page background
-          color = vec3(0.0, 0.0, 0.0);
-
-          // Add rotating digital twin holographic rings behind the sculpture
-          float r_dist = length(uv);
-          float hud1 = smoothstep(0.005, 0.0, abs(r_dist - 0.72));
-          float hud2 = smoothstep(0.004, 0.0, abs(r_dist - 0.90));
-          float hud3 = smoothstep(0.003, 0.0, abs(r_dist - 0.45));
-          
-          float angle = atan(uv.y, uv.x);
-          float dash1 = step(0.18, sin(angle * 8.0 + uTime * 0.35));
-          float dash2 = step(0.3, sin(angle * 12.0 - uTime * 0.5));
-          
-          vec3 hudColor = vec3(0.0, 0.55, 0.8) * (hud1 * dash1 + hud2 * dash2 + hud3 * 0.35);
-          color += hudColor;
-
-          // Add tiny drifting reflective metallic spheres/particles
-          float particles = 0.0;
-          for (int j = 0; j < 8; j++) {
-            vec2 pPos = vec2(
-              sin(uTime * 0.18 + float(j) * 1.5) * 0.8, 
-              cos(uTime * 0.28 + float(j) * 2.0) * 0.6
-            );
-            float size = 0.005 + 0.0025 * sin(uTime * 1.5 + float(j));
-            particles += smoothstep(size, 0.0, length(uv - pPos)) * (0.6 + 0.4 * sin(uTime * 2.2 + float(j)));
-          }
-          color += vec3(0.0, 0.85, 1.0) * particles * 0.65;
-        }
-
-        gl_FragColor = vec4(color, 1.0);
-      }
-    `;
-
-    // Compile helpers
-    const compileShader = (type: number, source: string) => {
-      const shader = gl.createShader(type);
-      if (!shader) return null;
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        console.error('Shader compile error:', gl.getShaderInfoLog(shader));
-        gl.deleteShader(shader);
-        return null;
-      }
-      return shader;
-    };
-
-    const vs = compileShader(gl.VERTEX_SHADER, vsSource);
-    const fs = compileShader(gl.FRAGMENT_SHADER, fsSource);
-    if (!vs || !fs) return;
-
-    const program = gl.createProgram();
-    if (!program) return;
-    gl.attachShader(program, vs);
-    gl.attachShader(program, fs);
-    gl.linkProgram(program);
-
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error('Program link error:', gl.getProgramInfoLog(program));
-      return;
-    }
-
-    const vertices = new Float32Array([
-      -1.0, -1.0,
-       1.0, -1.0,
-      -1.0,  1.0,
-      -1.0,  1.0,
-       1.0, -1.0,
-       1.0,  1.0
-    ]);
-
-    const buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-
-    const aPosition = gl.getAttribLocation(program, 'aPosition');
-    const uResolution = gl.getUniformLocation(program, 'uResolution');
-    const uTime = gl.getUniformLocation(program, 'uTime');
-    const uMouse = gl.getUniformLocation(program, 'uMouse');
-
-    // Canvas resizing helper
-    const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const displayWidth = Math.floor(container.clientWidth * dpr);
-      const displayHeight = Math.floor(container.clientHeight * dpr);
-
-      if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-        canvas.width = displayWidth;
-        canvas.height = displayHeight;
-        gl.viewport(0, 0, canvas.width, canvas.height);
-      }
-    };
-    resize();
+    const envScene = new THREE.Scene();
     
-    const resizeObserver = new ResizeObserver(resize);
+    // Add dark background shell
+    const bgSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(15, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0x030508, side: THREE.BackSide })
+    );
+    envScene.add(bgSphere);
+
+    // Add glowing cyan reflective lights in env map
+    const lightGeo = new THREE.SphereGeometry(1.5, 16, 16);
+    const cyanLightMesh = new THREE.Mesh(
+      lightGeo,
+      new THREE.MeshBasicMaterial({ color: 0x00dfff })
+    );
+    cyanLightMesh.position.set(-6, -4, -4);
+    envScene.add(cyanLightMesh);
+
+    // Add glowing orange reflective lights in env map
+    const orangeLightMesh = new THREE.Mesh(
+      lightGeo,
+      new THREE.MeshBasicMaterial({ color: 0xff5500 })
+    );
+    orangeLightMesh.position.set(6, 6, -4);
+    envScene.add(orangeLightMesh);
+
+    // Add bright white light on top
+    const whiteLightMesh = new THREE.Mesh(
+      lightGeo,
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    whiteLightMesh.position.set(0, 10, 0);
+    envScene.add(whiteLightMesh);
+
+    const envMapTarget = pmremGenerator.fromScene(envScene);
+    const envMap = envMapTarget.texture;
+
+    // 3. Construct Custom 3D Parametric Ribbon Geometry (Trefoil Knot-based curves)
+    const numPoints = 120;
+    const curvePoints: THREE.Vector3[] = [];
+    
+    for (let i = 0; i <= numPoints; i++) {
+      const t = (i / numPoints) * Math.PI * 2;
+      // Trefoil-knot math loop
+      const x = Math.sin(t) + 1.8 * Math.sin(2 * t);
+      const y = Math.cos(t) - 1.8 * Math.cos(2 * t);
+      const z = -Math.sin(3 * t) * 1.1;
+      
+      // Scaling down to center inside container nicely
+      curvePoints.push(new THREE.Vector3(x * 0.44, y * 0.44, z * 0.44));
+    }
+
+    const curve = new THREE.CatmullRomCurve3(curvePoints, true);
+
+    // Build ribbon buffer vertices
+    const radialSegments = 16;
+    const tubularSegments = 160;
+    const geom = new THREE.BufferGeometry();
+    const vertices: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    // Calculate tangent frames along the loop
+    const frames = curve.computeFrenetFrames(tubularSegments, true);
+
+    for (let i = 0; i <= tubularSegments; i++) {
+      const t = i / tubularSegments;
+      const point = curve.getPointAt(t);
+
+      const normal = frames.normals[i];
+      const binormal = frames.binormals[i];
+
+      // VARYING THICKNESS: swell and shrink along the loop to look organic
+      const thicknessScale = 1.0 + 0.45 * Math.sin(t * Math.PI * 6);
+      const width = 0.28 * thicknessScale;
+      const height = 0.05 * thicknessScale;
+
+      for (let j = 0; j < radialSegments; j++) {
+        const rad = (j / radialSegments) * Math.PI * 2;
+        const cosRad = Math.cos(rad);
+        const sinRad = Math.sin(rad);
+
+        const offset = new THREE.Vector3()
+          .addScaledVector(normal, cosRad * width)
+          .addScaledVector(binormal, sinRad * height);
+
+        const vertex = new THREE.Vector3().copy(point).add(offset);
+        vertices.push(vertex.x, vertex.y, vertex.z);
+
+        const vertexNormal = offset.clone().normalize();
+        normals.push(vertexNormal.x, vertexNormal.y, vertexNormal.z);
+
+        uvs.push(t, j / radialSegments);
+      }
+    }
+
+    // Generate indices mapping triangles
+    for (let i = 0; i < tubularSegments; i++) {
+      for (let j = 0; j < radialSegments; j++) {
+        const nextJ = (j + 1) % radialSegments;
+
+        const current = i * radialSegments + j;
+        const next = i * radialSegments + nextJ;
+        const currentNext = (i + 1) * radialSegments + j;
+        const nextNext = (i + 1) * radialSegments + nextJ;
+
+        indices.push(current, next, currentNext);
+        indices.push(next, nextNext, currentNext);
+      }
+    }
+
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+
+    // 4. Mirror Chrome PBR Material configuration
+    const material = new THREE.MeshPhysicalMaterial({
+      color: 0xdddddd,
+      metalness: 1.0,
+      roughness: 0.03,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.02,
+      envMap: envMap,
+      envMapIntensity: 1.8,
+      shadowSide: THREE.DoubleSide
+    });
+
+    const sculptureMesh = new THREE.Mesh(geom, material);
+    scene.add(sculptureMesh);
+
+    // 5. Add Cinematic Lights in the main scene
+    const ambientLight = new THREE.AmbientLight(0x0c1015);
+    scene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0x00dfff, 3.5); // Cyan key light
+    dirLight1.position.set(-5, -2, 5);
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0xff6600, 2.5); // Orange fill light
+    dirLight2.position.set(5, 5, 5);
+    scene.add(dirLight2);
+
+    const dirLight3 = new THREE.DirectionalLight(0xffffff, 4.0); // White key specular
+    dirLight3.position.set(0, 8, -2);
+    scene.add(dirLight3);
+
+    // 6. Add Holographic HUD rings behind the sculpture
+    const createRing = (radius: number, segments: number, color: number) => {
+      const points: THREE.Vector3[] = [];
+      for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * Math.PI * 2;
+        points.push(new THREE.Vector3(Math.cos(theta) * radius, Math.sin(theta) * radius, 0));
+      }
+      const ringGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const ringMat = new THREE.LineBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending
+      });
+      const ring = new THREE.Line(ringGeo, ringMat);
+      ring.position.z = -0.9;
+      return ring;
+    };
+
+    const hudRing1 = createRing(1.3, 64, 0x00dfff);
+    const hudRing2 = createRing(1.6, 64, 0x3b82f6);
+    scene.add(hudRing1);
+    scene.add(hudRing2);
+
+    // 7. Add Floating Dust Particles (Metallic glints)
+    const particleCount = 50;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleVelocities: number[] = [];
+
+    for (let i = 0; i < particleCount; i++) {
+      particlePositions[i * 3] = (Math.random() - 0.5) * 4.5;
+      particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 4.5;
+      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 3.5;
+      particleVelocities.push((Math.random() - 0.5) * 0.005);
+    }
+    
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    const particleMat = new THREE.PointsMaterial({
+      color: 0x00dfff,
+      size: 0.03,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending
+    });
+    
+    const particles = new THREE.Points(particleGeo, particleMat);
+    scene.add(particles);
+
+    // 8. Resizing Observer
+    const handleResize = () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    };
+
+    const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
 
-    // Render loop
+    // 9. Frame loop variables
     let animId = 0;
     let time = 0;
-    let currentX = 0;
-    let currentY = 0;
+    let currentTiltX = 0;
+    let currentTiltY = 0;
 
-    const render = () => {
-      time += 0.0166;
-      animId = requestAnimationFrame(render);
+    const animate = () => {
+      time += 0.01;
+      animId = requestAnimationFrame(animate);
 
-      // Lerp mouse target for smooth trailing rotation inertia
+      // Smooth float Y oscillation
+      sculptureMesh.position.y = Math.sin(time * 0.45) * 0.08;
+
+      // Smooth slow background auto-rotation
+      sculptureMesh.rotation.y = time * 0.07;
+      sculptureMesh.rotation.x = Math.sin(time * 0.22) * 0.06;
+
+      // Smooth mouse tilting
       const tMouse = uniformsRef.current.mouse;
-      currentX += (tMouse.targetX - currentX) * 0.07;
-      currentY += (tMouse.targetY - currentY) * 0.07;
+      currentTiltX += (tMouse.targetY * 0.15 - currentTiltX) * 0.06;
+      currentTiltY += (tMouse.targetX * 0.15 - currentTiltY) * 0.06;
 
-      gl.clearColor(0.0, 0.0, 0.0, 0.0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
+      sculptureMesh.rotation.x += currentTiltX;
+      sculptureMesh.rotation.y += currentTiltY;
 
-      gl.useProgram(program);
+      // Rotate HUD rings
+      hudRing1.rotation.z = time * 0.08;
+      hudRing2.rotation.z = -time * 0.04;
 
-      gl.enableVertexAttribArray(aPosition);
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-      gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+      // Animate floating particles
+      const positions = particleGeo.attributes.position.array as Float32Array;
+      for (let i = 0; i < particleCount; i++) {
+        positions[i * 3 + 1] += 0.0012 + Math.abs(particleVelocities[i]);
+        if (positions[i * 3 + 1] > 2.2) {
+          positions[i * 3 + 1] = -2.2;
+        }
+      }
+      particleGeo.attributes.position.needsUpdate = true;
 
-      gl.uniform2f(uResolution, canvas.width, canvas.height);
-      gl.uniform1f(uTime, time);
-      gl.uniform2f(uMouse, currentX, currentY);
-
-      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      renderer.render(scene, camera);
     };
-    render();
+    animate();
 
+    // 10. Clean up references
     return () => {
       cancelAnimationFrame(animId);
       resizeObserver.disconnect();
-      gl.deleteBuffer(buffer);
-      gl.deleteProgram(program);
+      pmremGenerator.dispose();
+      envMapTarget.dispose();
+      geom.dispose();
+      material.dispose();
+      particleGeo.dispose();
+      particleMat.dispose();
+      ringGeoCleanUp(hudRing1);
+      ringGeoCleanUp(hudRing2);
+      renderer.dispose();
     };
+
+    function ringGeoCleanUp(ringMesh: THREE.Line) {
+      ringMesh.geometry.dispose();
+      if (Array.isArray(ringMesh.material)) {
+        ringMesh.material.forEach(m => m.dispose());
+      } else {
+        ringMesh.material.dispose();
+      }
+    }
   }, []);
 
   return (
