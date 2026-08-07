@@ -140,7 +140,7 @@ export const HistoricalData = () => {
                           <td className="py-2.5 font-bold text-slate-900">{b.batch_code}</td>
                           <td className="py-2.5">{b.alloy_code || b.alloy_name || "316L"}</td>
                           <td className="py-2.5">{b.operator}</td>
-                          <td className="py-2.5">{b.batch_weight} {b.weight_unit}</td>
+                          <td className="py-2.5">{b.display_mass || `${b.batch_weight} ${b.weight_unit}`}</td>
                           <td className="py-2.5">
                             {b.quality_report ? (
                               <span className={b.quality_report.final_pass ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>

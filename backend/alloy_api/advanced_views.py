@@ -662,6 +662,26 @@ def start_smelting_run(request):
         alloy_code = request.data.get('alloy_code')
         batch_weight = float(request.data.get('batch_weight', 1000.0))
         batch_id = request.data.get('batch_id')
+        weight_unit = request.data.get('weight_unit', 'kg')
+
+        is_tonnes = weight_unit in ['t', 'tonnes', 'tonne']
+        input_unit = 'tonnes' if is_tonnes else 'kg'
+        target_mass_kg = batch_weight * 1000.0 if is_tonnes else batch_weight
+        display_unit = 'tonnes' if is_tonnes else 'kg'
+
+        if target_mass_kg >= 1000.0:
+            val_t = target_mass_kg / 1000.0
+            val_kg = int(target_mass_kg)
+            if is_tonnes:
+                display_mass = f"{val_t:.2f} tonnes ({val_kg} kg)"
+            else:
+                display_mass = f"{val_kg} kg ({val_t:.2f} tonnes)"
+        else:
+            if is_tonnes:
+                val_t = target_mass_kg / 1000.0
+                display_mass = f"{val_t:.3f} tonnes"
+            else:
+                display_mass = f"{int(target_mass_kg)} kg"
 
         # Deactivate any previous runs
         SmeltingRun.objects.filter(is_active=True).update(is_active=False)
@@ -683,7 +703,11 @@ def start_smelting_run(request):
             batch_progress=5.0,
             start_time=timezone.now(),
             estimated_finish=timezone.now() + timedelta(minutes=78),
-            predicted_quality=85.0
+            predicted_quality=85.0,
+            input_unit=input_unit,
+            target_mass_kg=target_mass_kg,
+            display_mass=display_mass,
+            display_unit=display_unit
         )
 
         return Response({

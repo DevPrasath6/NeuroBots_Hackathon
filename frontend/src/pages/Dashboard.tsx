@@ -153,11 +153,13 @@ export const Dashboard = () => {
   const [weightUnit, setWeightUnit] = useState<"kg" | "t">("kg");
 
   const formatWeight = (valueInKg: number) => {
-    if (weightUnit === 't') {
-      const val = valueInKg / 1000.0;
-      return `${val.toFixed(val < 0.1 ? 4 : 3)} t`;
+    const isTonnes = weightUnit === 't' || weightUnit === 'tonnes';
+    const valT = (valueInKg / 1000.0).toFixed(3);
+    const valKg = valueInKg.toFixed(0);
+    if (isTonnes) {
+      return `${valT} tonnes (${valKg} kg)`;
     }
-    return `${valueInKg.toFixed(0)} kg`;
+    return `${valKg} kg (${valT} tonnes)`;
   };
 
   const speakWeight = (valueInKg: number, name: string) => {
@@ -851,13 +853,14 @@ export const Dashboard = () => {
         const niActual = currentComposition.Ni || 0;
         if (niActual < niTarget) {
           const deficit = (niTarget - niActual).toFixed(2);
-          const additionKg = Math.round(4.2 * batchWeight / 100);
+          const batchWeightInKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+          const additionKg = 4.2 * batchWeightInKg / 100;
           voiceSafetyService.triggerAlert(
             "Composition Outside Specification", 
-            `Spectrometer analysis complete. Nickel concentration is below the target specification by ${deficit} percent. Recommended correction: Add ${additionKg} kilograms of nickel.`, 
+            `Spectrometer analysis complete. Nickel concentration is below the target specification by ${deficit} percent. Recommended correction: Add ${speakWeight(additionKg, "nickel")}.`, 
             2, 
             99.2, 
-            `Add ${additionKg} kg of Nickel raw material trim.`, 
+            `Add ${formatWeight(additionKg)} of Nickel raw material trim.`, 
             "Spectrometer"
           );
         } else {
@@ -1302,7 +1305,7 @@ export const Dashboard = () => {
 
   // Adjust composition with AI recommended trim weights
   const applyTrimAdjustment = (material: string, weight: number) => {
-    setAdditionsApplied(prev => [...prev, `${material} (${weight} kg)`]);
+    setAdditionsApplied(prev => [...prev, `${material} (${formatWeight(weight)})`]);
     
     // Simulate target element convergence
     setCurrentComposition(prev => {
@@ -1725,7 +1728,7 @@ export const Dashboard = () => {
                         </select>
                       </div>
                       <div className="text-[10px] font-mono text-slate-500 mt-1">
-                        Induction Crucible size limit: 500kg to 150,000kg
+                        Induction Crucible size limit: {weightUnit === "kg" ? "500 kg to 150,000 kg" : "0.50 t to 150.00 t"}
                       </div>
                     </div>
                   </CardContent>
@@ -1779,11 +1782,11 @@ export const Dashboard = () => {
                     <CardContent className="space-y-3 font-mono text-xs">
                       {Object.entries(selectedAlloy.composition).map(([symbol, value], idx) => {
                         const totalKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
-                        const additionKg = (totalKg * (value / 100)).toFixed(1);
+                        const additionKg = totalKg * (value / 100);
                         return (
                           <div key={idx} className="flex justify-between border-b border-slate-900 pb-2.5 last:border-0 last:pb-0">
                             <span className="text-slate-400 uppercase">{symbol} addition:</span>
-                            <span className="text-white font-bold">{additionKg} kg</span>
+                            <span className="text-white font-bold">{formatWeight(additionKg)}</span>
                           </div>
                         );
                       })}
@@ -2472,8 +2475,16 @@ export const Dashboard = () => {
                           <h3 className="text-xs font-mono text-cyan-400 uppercase tracking-widest font-bold">AI Autopilot Recommendations</h3>
                           <p className="text-[11px] text-slate-300 leading-relaxed font-outfit">
                             AI recommended trim adjustments based on optical emission spectrometry logs:
-                            - Add 28.0 kg Ferrochrome (Cr trim)
-                            - Add 3.2 kg Ferrosilicon (Si trim)
+                            <br />
+                            - Add {(() => {
+                              const batchWeightInKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+                              return formatWeight(28.0 * (batchWeightInKg / 1000.0));
+                            })()} Ferrochrome (Cr trim)
+                            <br />
+                            - Add {(() => {
+                              const batchWeightInKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+                              return formatWeight(3.2 * (batchWeightInKg / 1000.0));
+                            })()} Ferrosilicon (Si trim)
                           </p>
                         </Card>
 

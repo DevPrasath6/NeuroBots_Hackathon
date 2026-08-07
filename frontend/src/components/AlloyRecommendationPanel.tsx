@@ -62,6 +62,16 @@ Greetings! I am the MetalliSense Metallurgical and Production Agent. I can assis
     units: "kg"
   });
 
+  const formatChargeWeight = (valueInKg: number, inputUnit: string) => {
+    const isTonnes = inputUnit === 't' || inputUnit === 'tonnes' || inputUnit === 'tonne' || inputUnit === 'TONNES';
+    const valT = (valueInKg / 1000.0).toFixed(3);
+    const valKg = valueInKg.toFixed(0);
+    if (isTonnes) {
+      return `${valT} tonnes (${valKg} kg)`;
+    }
+    return `${valKg} kg (${valT} tonnes)`;
+  };
+
   const [compositionElements, setCompositionElements] = useState([
     { name: "Iron (Fe)", target: 68.0, current: 67.4, color: "rgba(148, 163, 184, 0.8)", element: "Fe" },
     { name: "Chromium (Cr)", target: 17.0, current: 16.2, color: "rgba(0, 243, 255, 0.8)", element: "Cr" },
@@ -248,7 +258,14 @@ Greetings! I am the MetalliSense Metallurgical and Production Agent. I can assis
           if (runData && runData.run_id && runData.status !== 'STANDBY') {
             const alloyCode = runData.alloy_code || "316L";
             const weight = runData.melt_weight || 1000;
-            handleSendMessage(`Initialize analysis for active run of ${weight} kg of ${alloyCode}`);
+            const unit = runData.input_unit || runData.display_unit || "kg";
+            setSelectedAlloy(prev => ({
+              ...prev,
+              grade: alloyCode,
+              targetWeight: runData.target_mass_kg || weight,
+              units: unit
+            }));
+            handleSendMessage(`Initialize analysis for active run of ${weight} ${unit} of ${alloyCode}`);
             return;
           }
         }
@@ -309,7 +326,7 @@ Greetings! I am the MetalliSense Metallurgical and Production Agent. I can assis
       pdf.setFontSize(10);
       pdf.text(`Grade Spec: ${selectedAlloy.grade} (${selectedAlloy.name})`, margin, yPosition);
       yPosition += 6;
-      pdf.text(`Target Weight: ${selectedAlloy.targetWeight} kg`, margin, yPosition);
+      pdf.text(`Target Weight: ${formatChargeWeight(selectedAlloy.targetWeight, selectedAlloy.units)}`, margin, yPosition);
       yPosition += 6;
       pdf.text(`Industry Compliance Standard: ${selectedAlloy.standard}`, margin, yPosition);
 
@@ -321,14 +338,14 @@ Greetings! I am the MetalliSense Metallurgical and Production Agent. I can assis
       
       rawMaterials.forEach((mat) => {
         addNewPageIfNeeded(12);
-        pdf.text(`• ${mat.name} (${mat.purity} purity): Charge ${mat.required} kg (Status: ${mat.status})`, margin, yPosition);
+        pdf.text(`• ${mat.name} (${mat.purity} purity): Charge ${formatChargeWeight(mat.required, selectedAlloy.units)} (Status: ${mat.status})`, margin, yPosition);
         yPosition += 6;
       });
 
       addNewPageIfNeeded(20);
       yPosition += 6;
       pdf.setFontSize(12);
-      pdf.text(`Total Charge Weight: ${rawMaterials.reduce((sum, m) => sum + m.required, 0).toFixed(1)} kg`, margin, yPosition);
+      pdf.text(`Total Charge Weight: ${formatChargeWeight(rawMaterials.reduce((sum, m) => sum + m.required, 0), selectedAlloy.units)}`, margin, yPosition);
       yPosition += 6;
       pdf.text(`Estimated Heat Cost: $${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, margin, yPosition);
 
@@ -618,7 +635,7 @@ Greetings! I am the MetalliSense Metallurgical and Production Agent. I can assis
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-slate-950/40 border border-slate-900 rounded-xl font-mono text-[11px] text-slate-300">
               <div>GRADE SPEC: <span className="text-cyan-400 font-bold">{selectedAlloy.grade}</span></div>
               <div>STANDARD: <span className="text-slate-400">{selectedAlloy.standard}</span></div>
-              <div>TARGET MASS: <span className="text-white font-bold">{selectedAlloy.targetWeight} {selectedAlloy.units.toUpperCase()}</span></div>
+              <div>TARGET MASS: <span className="text-white font-bold">{formatChargeWeight(selectedAlloy.targetWeight, selectedAlloy.units)}</span></div>
               <div className="col-span-2">ESTIMATED MASS COST: <span className="text-emerald-400 font-bold">${totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
             </div>
 
@@ -678,8 +695,8 @@ Greetings! I am the MetalliSense Metallurgical and Production Agent. I can assis
                   </div>
                   <div className="grid grid-cols-3 gap-1 font-mono text-[9px] text-slate-400">
                     <div>PURITY: {mat.purity}</div>
-                    <div>REQUIRED: {mat.required} kg</div>
-                    <div className="text-right">STOCK: {mat.available > 1000 ? `${(mat.available/1000).toFixed(1)} T` : `${mat.available} kg`}</div>
+                    <div>REQUIRED: {formatChargeWeight(mat.required, selectedAlloy.units)}</div>
+                    <div className="text-right">STOCK: {formatChargeWeight(mat.available, selectedAlloy.units)}</div>
                   </div>
                 </div>
               ))}
@@ -764,7 +781,7 @@ Greetings! I am the MetalliSense Metallurgical and Production Agent. I can assis
                     </div>
                     <p className="text-[11px] text-slate-300">{rec.reason}</p>
                     <div className="grid grid-cols-2 gap-4 text-[10px] font-mono text-slate-400">
-                      <div>CHARGE WEIGHT: <span className="text-white font-bold">+{rec.quantity} {rec.unit}</span></div>
+                      <div>CHARGE WEIGHT: <span className="text-white font-bold">+{formatChargeWeight(rec.quantity, selectedAlloy.units)}</span></div>
                       <div>ESTIMATED COST: <span className="text-white font-bold">${rec.estimatedCost.toFixed(2)}</span></div>
                     </div>
                   </div>

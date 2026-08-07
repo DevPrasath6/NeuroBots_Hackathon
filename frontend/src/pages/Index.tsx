@@ -158,7 +158,7 @@ const Index = () => {
             description: "Audit compliance records archived" 
         },
         { 
-            value: `${stats.totalMassKg.toFixed(0)} kg`, 
+            value: `${(stats.totalMassKg / 1000.0).toFixed(2)} tonnes (${stats.totalMassKg.toFixed(0)} kg)`, 
             label: "Total Metallurgical Mass", 
             description: "Total weight smelted historically" 
         }

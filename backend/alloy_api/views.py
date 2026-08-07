@@ -190,6 +190,25 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
             if not alloy:
                 alloy = Alloy.objects.first()
 
+        is_tonnes = weight_unit in ['t', 'tonnes', 'tonne']
+        input_unit = 'tonnes' if is_tonnes else 'kg'
+        target_mass_kg = batch_weight * 1000.0 if is_tonnes else batch_weight
+        display_unit = 'tonnes' if is_tonnes else 'kg'
+
+        if target_mass_kg >= 1000.0:
+            val_t = target_mass_kg / 1000.0
+            val_kg = int(target_mass_kg)
+            if is_tonnes:
+                display_mass = f"{val_t:.2f} tonnes ({val_kg} kg)"
+            else:
+                display_mass = f"{val_kg} kg ({val_t:.2f} tonnes)"
+        else:
+            if is_tonnes:
+                val_t = target_mass_kg / 1000.0
+                display_mass = f"{val_t:.3f} tonnes"
+            else:
+                display_mass = f"{int(target_mass_kg)} kg"
+
         # Create batch
         batch = ProductionBatch.objects.create(
             batch_code=f"BATCH-{alloy.code}-{timezone.now().strftime('%m%d%H%M')}",
@@ -198,7 +217,11 @@ class ProductionBatchViewSet(viewsets.ModelViewSet):
             weight_unit=weight_unit,
             operator=operator,
             status='MELTING',
-            current_stage='STAGE 1: SCRAP MELT'
+            current_stage='STAGE 1: SCRAP MELT',
+            input_unit=input_unit,
+            target_mass_kg=target_mass_kg,
+            display_mass=display_mass,
+            display_unit=display_unit
         )
 
         # Generate recipe using Composition Calculations

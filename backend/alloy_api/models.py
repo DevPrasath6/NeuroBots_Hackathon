@@ -85,6 +85,12 @@ class ProductionBatch(models.Model):
     production_duration = models.IntegerField(default=0)  # minutes
     current_stage = models.CharField(max_length=100, default="PLANNING")
 
+    # Dynamic unit-aware mass persistence fields
+    input_unit = models.CharField(max_length=20, default="kg")
+    target_mass_kg = models.FloatField(default=0.0)
+    display_mass = models.CharField(max_length=50, default="0 kg")
+    display_unit = models.CharField(max_length=20, default="kg")
+
     class Meta:
         db_table = 'production_batches'
 
@@ -311,6 +317,12 @@ class SmeltingRun(models.Model):
     is_active = models.BooleanField(default=True)
     status = models.CharField(max_length=50, default='STANDBY')
     current_stage = models.CharField(max_length=100, default='STANDBY')
+
+    # Dynamic unit-aware mass persistence fields
+    input_unit = models.CharField(max_length=20, default="kg")
+    target_mass_kg = models.FloatField(default=0.0)
+    display_mass = models.CharField(max_length=50, default="0 kg")
+    display_unit = models.CharField(max_length=20, default="kg")
     batch_id = models.CharField(max_length=100, null=True, blank=True)
     temperature = models.FloatField(default=25.0)
     power = models.FloatField(default=0.0)

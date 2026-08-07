@@ -287,12 +287,12 @@ class DataService {
     }
   }
 
-  async startSmeltingRun(alloyCode: string, batchWeight: number, batchId?: string): Promise<any> {
+  async startSmeltingRun(alloyCode: string, batchWeight: number, batchId?: string, weightUnit?: string): Promise<any> {
     try {
       const res = await fetch('/api/smelting/start-run/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ alloy_code: alloyCode, batch_weight: batchWeight, batch_id: batchId })
+        body: JSON.stringify({ alloy_code: alloyCode, batch_weight: batchWeight, batch_id: batchId, weight_unit: weightUnit || 'kg' })
       });
       if (!res.ok) throw new Error('Failed to start run');
       return await res.json();
