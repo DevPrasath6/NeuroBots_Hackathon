@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import FeatureLauncher from '@/components/FeatureLauncher';
 import { ModelAccuracyDisplay } from '@/components/ModelAccuracyDisplay';
-import { LiquidMetalCanvas } from '@/components/LiquidMetalCanvas';
+import { MoltenSculptureCanvas } from '@/components/MoltenSculptureCanvas';
 
 const Index = () => {
     const navigate = useNavigate();
@@ -221,12 +221,6 @@ const Index = () => {
 
     return (
         <div className="min-h-screen bg-transparent gradient-mesh font-inter text-slate-100 relative overflow-hidden">
-            {/* Real-time WebGL Cloudinary Image 3D Parallax Background */}
-            <LiquidMetalCanvas 
-                hoverCTA1={hoverCTA1}
-                hoverCTA2={hoverCTA2}
-                transitionProgress={transitionProgress}
-            />
 
             {/* Floating Futuristic Header */}
             <header 
@@ -275,91 +269,99 @@ const Index = () => {
                 <section className="relative overflow-hidden min-h-[90vh] flex items-center justify-center py-12">
                     <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,243,255,0.02),transparent_70%)] pointer-events-none"></div>
                     <div className="container mx-auto px-6 relative z-10">
-                        <div className="text-center max-w-5xl mx-auto">
-                            {/* Floating Badge */}
-                            <div className="inline-flex items-center space-x-3 bg-slate-950/60 border border-cyan-500/25 px-5 py-2.5 rounded-full mb-8 shadow-[0_0_15px_rgba(0,243,255,0.1)]">
-                                <Brain className="h-4 w-4 text-cyan-400" />
-                                <span className="text-xs font-mono tracking-widest text-slate-300 uppercase">MetalliSense Industrial AI Smelting Platform</span>
-                                <Sparkles className="h-3.5 w-3.5 text-orange-400 animate-pulse" />
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+                            {/* Left Column (Left-Aligned Hero Content) */}
+                            <div className="lg:col-span-7 text-left flex flex-col items-start">
+                                {/* Floating Badge */}
+                                <div className="inline-flex items-center space-x-3 bg-slate-950/60 border border-cyan-500/25 px-5 py-2.5 rounded-full mb-8 shadow-[0_0_15px_rgba(0,243,255,0.1)]">
+                                    <Brain className="h-4 w-4 text-cyan-400" />
+                                    <span className="text-xs font-mono tracking-widest text-slate-300 uppercase">MetalliSense Industrial AI Smelting Platform</span>
+                                    <Sparkles className="h-3.5 w-3.5 text-orange-400 animate-pulse" />
+                                </div>
+
+                                {/* Hero Title */}
+                                <h1 className="text-5xl md:text-7xl font-black font-outfit tracking-tighter mb-6 leading-tight text-left">
+                                    <span className="text-gradient">METALLISENSE</span>
+                                    <br />
+                                    <span className="text-slate-200">SAFETY & SMELTING</span>
+                                </h1>
+
+                                {/* Hero Description */}
+                                <p className="text-base md:text-lg text-slate-400 text-left mb-10 leading-relaxed max-w-2xl">
+                                    Real-time AI voice safety assistant and dynamic composite smelting optimization engine. Connects directly to digital twin telemetry, OES spectrometer analysis, and raw material inventory for automated safety checks and taps.
+                                </p>
+
+                                {/* Hero Actions */}
+                                <div className="flex flex-col sm:flex-row gap-4 justify-start mb-12 w-full sm:w-auto">
+                                    <Link to="/dashboard" onClick={handleLaunchClick}>
+                                        <Button 
+                                            size="lg" 
+                                            onMouseEnter={() => setHoverCTA1(true)}
+                                            onMouseLeave={() => setHoverCTA1(false)}
+                                            className="w-full sm:w-auto px-8 py-6 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-slate-950 font-outfit font-bold rounded-xl shadow-[0_0_25px_rgba(6,182,212,0.4)] transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center group"
+                                        >
+                                            <Activity className="h-5 w-5 mr-3 text-slate-950 fill-slate-950" />
+                                            Launch Control Console
+                                            <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                                        </Button>
+                                    </Link>
+                                    <Link to="/recommendations">
+                                        <Button 
+                                            variant="outline" 
+                                            size="lg" 
+                                            onMouseEnter={() => setHoverCTA2(true)}
+                                            onMouseLeave={() => setHoverCTA2(false)}
+                                            className="w-full sm:w-auto glass-button px-8 py-6 text-slate-200 rounded-xl hover:scale-[1.02] flex items-center justify-center"
+                                        >
+                                            <Zap className="h-5 w-5 mr-3 text-cyan-400" />
+                                            AI Recommendations
+                                        </Button>
+                                    </Link>
+                                </div>
+
+                                {/* Live Telemetry Metric Display */}
+                                <div className="glass-card p-6 rounded-2xl w-full max-w-md border border-cyan-500/20 relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-24 h-24 bg-[radial-gradient(circle_at_top_right,rgba(0,243,255,0.08),transparent)] pointer-events-none"></div>
+                                    <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-900/60">
+                                        <h3 className="text-xs font-mono font-bold tracking-widest text-cyan-400 uppercase">SYS TELEMETRY MONITORS</h3>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => setIsAutoRotating(!isAutoRotating)}
+                                            className="h-7 px-2 hover:bg-slate-900/40 text-slate-400 hover:text-slate-200"
+                                        >
+                                            {isAutoRotating ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                                        </Button>
+                                    </div>
+
+                                    <div className="text-left py-2">
+                                        <div className="text-4xl font-extrabold font-mono text-white tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] mb-2">
+                                            {metrics[currentMetric].value}
+                                        </div>
+                                        <div className="text-sm font-semibold font-outfit text-slate-200 mb-1">
+                                            {metrics[currentMetric].label}
+                                        </div>
+                                        <div className="text-xs text-slate-400 font-mono">
+                                            {metrics[currentMetric].description}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex justify-start space-x-2 mt-4">
+                                        {metrics.map((_, index) => (
+                                            <button
+                                                key={index}
+                                                onClick={() => setCurrentMetric(index)}
+                                                className={`h-1 rounded-full transition-all duration-300 ${index === currentMetric ? 'bg-cyan-400 w-6' : 'bg-slate-800 w-2'
+                                                    }`}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Hero Title */}
-                            <h1 className="text-6xl md:text-8xl font-black font-outfit tracking-tighter mb-6 leading-tight">
-                                <span className="text-gradient">METALLISENSE</span>
-                                <br />
-                                <span className="text-slate-200">SAFETY & SMELTING</span>
-                            </h1>
-
-                            {/* Hero Description */}
-                            <p className="text-lg text-slate-400 max-w-3xl mx-auto mb-12 leading-relaxed">
-                                Real-time AI voice safety assistant and dynamic composite smelting optimization engine. Connects directly to digital twin telemetry, OES spectrometer analysis, and raw material inventory for automated safety checks and taps.
-                            </p>
-
-                            {/* Hero Actions */}
-                            <div className="flex flex-col sm:flex-row gap-4 justify-center mb-16">
-                                <Link to="/dashboard" onClick={handleLaunchClick}>
-                                    <Button 
-                                        size="lg" 
-                                        onMouseEnter={() => setHoverCTA1(true)}
-                                        onMouseLeave={() => setHoverCTA1(false)}
-                                        className="px-8 py-6 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-slate-950 font-outfit font-bold rounded-xl shadow-[0_0_25px_rgba(6,182,212,0.4)] transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center group"
-                                    >
-                                        <Activity className="h-5 w-5 mr-3 text-slate-950 fill-slate-950" />
-                                        Launch Control Console
-                                        <ArrowRight className="h-4 w-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                                    </Button>
-                                </Link>
-                                <Link to="/recommendations">
-                                    <Button 
-                                        variant="outline" 
-                                        size="lg" 
-                                        onMouseEnter={() => setHoverCTA2(true)}
-                                        onMouseLeave={() => setHoverCTA2(false)}
-                                        className="glass-button px-8 py-6 text-slate-200 rounded-xl hover:scale-[1.02] flex items-center"
-                                    >
-                                        <Zap className="h-5 w-5 mr-3 text-cyan-400" />
-                                        AI Recommendations
-                                    </Button>
-                                </Link>
-                            </div>
-
-                            {/* Live Telemetry Metric Display */}
-                            <div className="glass-card p-6 rounded-2xl max-w-md mx-auto border border-cyan-500/20 relative overflow-hidden group">
-                                <div className="absolute top-0 right-0 w-24 h-24 bg-[radial-gradient(circle_at_top_right,rgba(0,243,255,0.08),transparent)] pointer-events-none"></div>
-                                <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-900/60">
-                                    <h3 className="text-xs font-mono font-bold tracking-widest text-cyan-400 uppercase">SYS TELEMETRY MONITORS</h3>
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => setIsAutoRotating(!isAutoRotating)}
-                                        className="h-7 px-2 hover:bg-slate-900/40 text-slate-400 hover:text-slate-200"
-                                    >
-                                        {isAutoRotating ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                                    </Button>
-                                </div>
-
-                                <div className="text-center py-2">
-                                    <div className="text-5xl font-extrabold font-mono text-white tracking-tight drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] mb-2">
-                                        {metrics[currentMetric].value}
-                                    </div>
-                                    <div className="text-sm font-semibold font-outfit text-slate-200 mb-1">
-                                        {metrics[currentMetric].label}
-                                    </div>
-                                    <div className="text-xs text-slate-400 font-mono">
-                                        {metrics[currentMetric].description}
-                                    </div>
-                                </div>
-
-                                <div className="flex justify-center space-x-2 mt-4">
-                                    {metrics.map((_, index) => (
-                                        <button
-                                            key={index}
-                                            onClick={() => setCurrentMetric(index)}
-                                            className={`h-1 rounded-full transition-all duration-300 ${index === currentMetric ? 'bg-cyan-400 w-6' : 'bg-slate-800 w-2'
-                                                }`}
-                                        />
-                                    ))}
-                                </div>
+                            {/* Right Column (Centerpiece 3D Interactive Sculpture) */}
+                            <div className="lg:col-span-5 flex items-center justify-center min-h-[450px]">
+                                <MoltenSculptureCanvas />
                             </div>
                         </div>
                     </div>
