@@ -456,6 +456,161 @@ def process_analytics_stats(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
+import datetime
+from django.utils import timezone
+
+def tick_smelting_fsm(run):
+    now = timezone.now()
+    params = run.input_parameters or {}
+    
+    # Initialize parameters
+    if 'last_stage_change' not in params:
+        params['last_stage_change'] = now.isoformat()
+        params['tick_count'] = 0
+    
+    try:
+        last_change = datetime.datetime.fromisoformat(params['last_stage_change'])
+        if timezone.is_naive(last_change) and timezone.is_active():
+            last_change = timezone.make_aware(last_change)
+    except Exception:
+        last_change = now
+        params['last_stage_change'] = now.isoformat()
+
+    duration = (now - last_change).total_seconds()
+    params['tick_count'] = params.get('tick_count', 0) + 1
+    
+    # Watchdog Failsafe: if duration in any stage exceeds 40 seconds, force transition!
+    WATCHDOG_TIMEOUT = 40.0
+    is_timeout = duration >= WATCHDOG_TIMEOUT
+
+    status = run.status
+    stage = run.current_stage
+    progress = run.batch_progress
+    temp = run.temperature
+    
+    if status == 'PREPARING':
+        progress = min(100.0, progress + 10.0)
+        temp = min(300.0, temp + 30.0)
+        if progress >= 100.0 or is_timeout:
+            status = 'HEATING'
+            stage = 'Heating'
+            progress = 0.0
+            temp = 300.0
+            params['last_stage_change'] = now.isoformat()
+            params['tick_count'] = 0
+            
+    elif status == 'HEATING':
+        progress = min(100.0, progress + 12.0)
+        temp = min(1150.0, temp + 100.0)
+        if progress >= 100.0 or is_timeout:
+            status = 'MELTING'
+            stage = 'Melting Started'
+            progress = 0.0
+            temp = 1150.0
+            params['last_stage_change'] = now.isoformat()
+            params['tick_count'] = 0
+            
+    elif status == 'MELTING':
+        if stage == 'Melting Started':
+            progress = min(35.0, progress + 5.0)
+            temp = min(1492.0, temp + 40.0)
+            if progress >= 35.0 or is_timeout:
+                status = 'SPECTROMETER_SAMPLING'
+                stage = 'Spectrometer Sample 1'
+                progress = 35.0
+                params['last_stage_change'] = now.isoformat()
+                params['tick_count'] = 0
+        elif stage == 'Refining 2':
+            progress = min(75.0, progress + 8.0)
+            temp = min(1580.0, temp + 20.0)
+            if progress >= 75.0 or is_timeout:
+                status = 'SPECTROMETER_SAMPLING'
+                stage = 'Spectrometer Sample 2'
+                progress = 75.0
+                params['last_stage_change'] = now.isoformat()
+                params['tick_count'] = 0
+                
+    elif status == 'SPECTROMETER_SAMPLING':
+        if stage == 'Spectrometer Sample 1':
+            if params['tick_count'] >= 2 or is_timeout:
+                status = 'SPECTROMETER_ANALYSIS'
+                stage = 'OES Scan 1'
+                params['last_stage_change'] = now.isoformat()
+                params['tick_count'] = 0
+        elif stage == 'Spectrometer Sample 2':
+            if params['tick_count'] >= 2 or is_timeout:
+                status = 'SPECTROMETER_ANALYSIS'
+                stage = 'OES Scan 2'
+                params['last_stage_change'] = now.isoformat()
+                params['tick_count'] = 0
+                
+    elif status == 'SPECTROMETER_ANALYSIS':
+        if stage == 'OES Scan 1':
+            if params['tick_count'] >= 3 or is_timeout:
+                status = 'COMPOSITION_VALIDATION'
+                stage = 'Composition Validation 1'
+                params['last_stage_change'] = now.isoformat()
+                params['tick_count'] = 0
+        elif stage == 'OES Scan 2':
+            if params['tick_count'] >= 3 or is_timeout:
+                status = 'COMPOSITION_VALIDATION'
+                stage = 'Composition Validation 2'
+                params['last_stage_change'] = now.isoformat()
+                params['tick_count'] = 0
+                
+    elif status == 'COMPOSITION_VALIDATION':
+        if stage == 'Composition Validation 1':
+            # Create composition deviation anomaly
+            # Automatically apply correction and advance after 3 ticks
+            if params['tick_count'] >= 3 or is_timeout:
+                status = 'MELTING'
+                stage = 'Refining 2'
+                progress = 35.0
+                params['last_stage_change'] = now.isoformat()
+                params['tick_count'] = 0
+        elif stage == 'Composition Validation 2':
+            if params['tick_count'] >= 3 or is_timeout:
+                status = 'READY_TO_TAP'
+                stage = 'Ready To Tap'
+                params['last_stage_change'] = now.isoformat()
+                params['tick_count'] = 0
+                
+    elif status == 'READY_TO_TAP':
+        if params['tick_count'] >= 3 or is_timeout:
+            status = 'FURNACE_POURING_ANIMATION'
+            stage = 'Furnace Pouring Animation'
+            params['last_stage_change'] = now.isoformat()
+            params['tick_count'] = 0
+            
+    elif status == 'FURNACE_POURING_ANIMATION':
+        progress = min(100.0, progress + 10.0)
+        if progress >= 100.0 or is_timeout:
+            status = 'BATCH_COMPLETED'
+            stage = 'Batch Completed'
+            progress = 100.0
+            params['last_stage_change'] = now.isoformat()
+            params['tick_count'] = 0
+            
+    elif status == 'BATCH_COMPLETED':
+        status = 'COMPLETED'
+        stage = 'Production Report'
+        params['last_stage_change'] = now.isoformat()
+        params['tick_count'] = 0
+
+    run.status = status
+    run.current_stage = stage
+    run.batch_progress = progress
+    run.temperature = temp
+    
+    if status in ['PREPARING', 'HEATING', 'MELTING']:
+        run.power = 2200.0 + (timezone.now().microsecond % 200)
+    else:
+        run.power = 0.0
+        
+    run.energy_consumption = round((progress / 100.0) * 850.0)
+    run.input_parameters = params
+    run.save()
+
 @api_view(['GET'])
 def current_smelting_run(request):
     """Retrieve the currently active smelting run from PostgreSQL database"""
@@ -476,6 +631,9 @@ def current_smelting_run(request):
                 "predicted_quality": 0.0,
                 "ai_recommendation": {}
             })
+        
+        # Run FSM tick
+        tick_smelting_fsm(active_run)
         
         return Response({
             "run_id": str(active_run.id),

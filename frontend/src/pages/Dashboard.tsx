@@ -47,6 +47,95 @@ export const Dashboard = () => {
     };
   }, []);
 
+  const currentStepRef = useRef(currentStep);
+  useEffect(() => {
+    currentStepRef.current = currentStep;
+  }, [currentStep]);
+
+  // Authoritative Backend Workflow Synchronization Engine
+  useEffect(() => {
+    let active = true;
+
+    const syncRun = async () => {
+      try {
+        const runRes = await fetch('/api/smelting/current-run/');
+        if (!runRes.ok || !active) return;
+        const run = await runRes.json();
+        
+        if (run && run.run_id && run.status !== 'STANDBY') {
+          setMeltProgress(run.batch_progress);
+          setMeltTemperature(run.temperature);
+          
+          const status = run.status;
+          const stage = run.current_stage;
+          
+          if (status === 'PREPARING') {
+            setCurrentStep(3);
+            if (run.batch_progress < 30) setGuidedStep(1);
+            else if (run.batch_progress < 60) setGuidedStep(2);
+            else setGuidedStep(3);
+          } else if (status === 'HEATING') {
+            setCurrentStep(4);
+            setMeltSubState("initial_melting");
+          } else if (status === 'MELTING') {
+            setCurrentStep(4);
+            if (stage === 'Refining 2') {
+              setMeltSubState("melting_2");
+            } else {
+              setMeltSubState("initial_melting");
+            }
+          } else if (status === 'SPECTROMETER_SAMPLING') {
+            setCurrentStep(4);
+            if (stage === 'Spectrometer Sample 2') {
+              setMeltSubState("sampling_required_2");
+            } else {
+              setMeltSubState("sampling_required_1");
+            }
+          } else if (status === 'SPECTROMETER_ANALYSIS') {
+            setCurrentStep(4);
+            if (stage === 'OES Scan 2') {
+              setMeltSubState("oes_scan_2");
+            } else {
+              setMeltSubState("oes_scan_1");
+            }
+          } else if (status === 'COMPOSITION_VALIDATION') {
+            setCurrentStep(4);
+            if (stage === 'Composition Validation 2') {
+              setMeltSubState("report_2");
+            } else {
+              setMeltSubState("report_1");
+            }
+          } else if (status === 'READY_TO_TAP') {
+            setCurrentStep(4);
+            setMeltSubState("ready_to_tap");
+          } else if (status === 'FURNACE_POURING_ANIMATION') {
+            setCurrentStep(4);
+            setMeltSubState("pouring");
+          } else if (status === 'BATCH_COMPLETED') {
+            setCurrentStep(4);
+            setMeltSubState("completed");
+          } else if (status === 'COMPLETED') {
+            setCurrentStep(5);
+            setReportGenerated(true);
+          }
+        } else {
+          if (currentStepRef.current >= 4) {
+            setCurrentStep(0);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to sync backend run FSM:", e);
+      }
+    };
+
+    syncRun();
+    const interval = setInterval(syncRun, 1500);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
 
   // Batch Config data
   const [searchQuery, setSearchQuery] = useState("");
@@ -218,27 +307,15 @@ export const Dashboard = () => {
     return alertsList.some(alert => alert.priority === 3 && alert.status !== 'resolved' && alert.status !== 'closed');
   };
 
-  // Automate transition from ready_to_tap to pouring (tapping animation)
+  // Voice alerts on tapping/ready triggers
   useEffect(() => {
-    if (currentStep !== 4 || meltSubState !== "ready_to_tap") return;
-
-    const isCompOk = isCompositionWithinTolerance();
-    const hasCritAnomaly = hasActiveCriticalAnomaly();
-    const isBlocked = !isCompOk || hasCritAnomaly || emergencyStop;
-
-    if (!isBlocked) {
-      // Speak ready to tap message
+    if (currentStep !== 4) return;
+    if (meltSubState === "ready_to_tap") {
       voiceSafetyService.speak("Composition has been verified successfully. The furnace is now ready for tapping.", 1, "Ready To Tap");
-
-      // Automatically transition to pouring after 3 seconds
-      const timer = setTimeout(() => {
-        setMeltSubState("pouring");
-        voiceSafetyService.speak("Tapping operation has started.", 1, "Tapping Started");
-      }, 3000);
-
-      return () => clearTimeout(timer);
+    } else if (meltSubState === "pouring") {
+      voiceSafetyService.speak("Tapping operation has started.", 1, "Tapping Started");
     }
-  }, [currentStep, meltSubState, emergencyStop, currentComposition, alertsList]);
+  }, [currentStep, meltSubState]);
 
   const exportToCSV = () => {
     const rows = [
@@ -841,233 +918,15 @@ export const Dashboard = () => {
     }
   }, [meltTemperature, currentStep, isMeltingActive]);
 
-  // Autopilot for composition trim correction and report generation
+  // Autopilot for additions tracking in UI
   useEffect(() => {
     if (currentStep !== 4) return;
-    if (meltSubState !== "report_1" && meltSubState !== "report_2") return;
-
-    const timer = setTimeout(() => {
-      if (meltSubState === "report_1") {
-        applyTrimAdjustment("Ferrochrome", 28.0);
-      } else {
-        applyTrimAdjustment("Ferrosilicon", 3.2);
-      }
-    }, 4500); // 4.5 seconds auto-apply correction
-
-    return () => clearTimeout(timer);
+    if (meltSubState === "melting_2") {
+      setAdditionsApplied(prev => prev.includes("Ferrochrome (28 kg)") ? prev : [...prev, "Ferrochrome (28 kg)"]);
+    } else if (meltSubState === "ready_to_tap") {
+      setAdditionsApplied(prev => prev.includes("Ferrosilicon (3.2 kg)") ? prev : [...prev, "Ferrosilicon (3.2 kg)"]);
+    }
   }, [currentStep, meltSubState]);
-
-  useEffect(() => {
-    if (currentStep !== 5 || reportGenerated) return;
-
-    const timer = setTimeout(() => {
-      setReportGenerated(true);
-    }, 4000); // 4 seconds auto-generate report screen
-
-    return () => clearTimeout(timer);
-  }, [currentStep, reportGenerated]);
-
-  // Step 3 Autopilot for guided charging additions and furnace starting
-  useEffect(() => {
-    if (currentStep !== 3) return;
-
-    const timer = setTimeout(() => {
-      if (guidedStep === 1) {
-        setGuidedStep(2);
-        voiceSafetyService.speak("Ferrochrome successfully added.", 1, "added_ferrochrome");
-        setTimeout(() => {
-          voiceSafetyService.speak("Please add one hundred twenty kilograms of nickel.", 1, "recommend_nickel");
-        }, 1000);
-      } else if (guidedStep === 2) {
-        setGuidedStep(3);
-        voiceSafetyService.speak("Nickel successfully added.", 1, "added_nickel");
-      } else if (guidedStep === 3) {
-        const startFurnace = async () => {
-          try {
-            voiceSafetyService.resetCycle();
-            const batchRes = await fetch('/api/batches/', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                alloy_code: selectedAlloy.grade,
-                batch_weight: batchWeight,
-                weight_unit: weightUnit,
-                operator: 'op_watas'
-              })
-            });
-            const batchData = await batchRes.json();
-            await dataService.startSmeltingRun(selectedAlloy.grade, batchWeight, batchData.id || batchData.batch_code);
-            await dataService.updateSmeltingRun({
-              status: 'PREPARING',
-              current_stage: 'Preparing Furnace',
-              batch_progress: 0,
-              temperature: 25.0
-            });
-            setReportGenerated(false);
-            setSessionAlerts([]);
-            setIsMeltingActive(true);
-            setMeltProgress(0);
-            setMeltTemperature(1200);
-            setMeltSubState("initial_melting");
-            handleNext();
-          } catch (e) {
-            console.error("Autopilot failed to start furnace:", e);
-          }
-        };
-        startFurnace();
-      }
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [currentStep, guidedStep, selectedAlloy, batchWeight, weightUnit]);
-
-  // Production Autopilot Watchdog Failsafe
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const hasCritAnomaly = hasActiveCriticalAnomaly();
-      const isBlocked = hasCritAnomaly || emergencyStop;
-
-      if (currentStep === 3) {
-        if (guidedStep === 0) {
-          setGuidedStep(1);
-        }
-      } else if (currentStep === 4) {
-        if (meltSubState === "initial_melting") {
-          if (!isMeltingActive && !isBlocked) {
-            setIsMeltingActive(true);
-          }
-        } else if (meltSubState === "melting_2") {
-          if (!isMeltingActive && !isBlocked) {
-            setIsMeltingActive(true);
-          }
-        } else if (meltSubState === "sampling_required_1") {
-          setMeltSubState("oes_scan_1");
-        } else if (meltSubState === "sampling_required_2") {
-          setMeltSubState("oes_scan_2");
-        }
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [currentStep, meltSubState, isMeltingActive, emergencyStop, guidedStep, alertsList]);
-
-  // Power Overload telemetry watchdog check
-  useEffect(() => {
-    if (currentStep !== 4 || !isMeltingActive) return;
-    const currentPower = 2200 + Math.random() * 200;
-    if (currentPower > 2380) {
-      voiceSafetyService.triggerAlert(
-        "Power Overload",
-        "Warning. Electrical power overload detected on induction coils.",
-        2,
-        97.0,
-        "Verify coil resistance and check capacitor banks.",
-        "Electrical"
-      );
-    }
-  }, [meltProgress, currentStep, isMeltingActive]);
-
-  // Live Furnace Simulator (Step 4 - Melting)
-  useEffect(() => {
-    const hasCritAnomaly = hasActiveCriticalAnomaly();
-    if (currentStep !== 4 || !isMeltingActive || emergencyStop || hasCritAnomaly) return;
-
-    const interval = setInterval(() => {
-      // Temperature increase
-      setMeltTemperature(prev => {
-        const target = meltSubState === "initial_melting" ? 1492 : 1580;
-        if (prev < target) return prev + 15;
-        return prev;
-      });
-
-      // Melt progress cycle
-      setMeltProgress(prev => {
-        if (meltSubState === "initial_melting") {
-          if (prev >= 35) {
-            setIsMeltingActive(false);
-            setSpectrometerProgress(0);
-            setSpectrometerStageName("SAMPLE INSERTED");
-            setMeltSubState("oes_scan_1");
-            return 35;
-          }
-          return prev + 2;
-        } else if (meltSubState === "melting_2") {
-          if (prev >= 75) {
-            setIsMeltingActive(false);
-            setSpectrometerProgress(0);
-            setSpectrometerStageName("SAMPLE INSERTED");
-            setMeltSubState("oes_scan_2");
-            return 75;
-          }
-          return prev + 3;
-        } else if (meltSubState === "completed") {
-          clearInterval(interval);
-          return 100;
-        }
-        return prev;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [currentStep, isMeltingActive, meltSubState]);
-
-  // Synchronize smelting simulation state to PostgreSQL
-  const syncSmeltingRunState = async (subState: string, progress: number, temp: number) => {
-    let status: 'STANDBY' | 'PREPARING' | 'CHARGING' | 'MELTING' | 'REFINING' | 'READY_TO_TAP' | 'TAPPING' | 'COMPLETED' = 'STANDBY';
-    let current_stage = 'Idle';
-
-    if (subState === "initial_melting") {
-      if (progress < 10) {
-        status = 'CHARGING';
-        current_stage = 'Charging Materials';
-      } else {
-        status = 'MELTING';
-        current_stage = 'Melting Started';
-      }
-    } else if (subState.startsWith("sampling_required") || subState.startsWith("oes_scan") || subState.startsWith("report")) {
-      if (subState === "report_2") {
-        status = 'READY_TO_TAP';
-        current_stage = 'Quality Validation';
-      } else {
-        status = 'REFINING';
-        current_stage = 'Composition Adjustment';
-      }
-    } else if (subState === "melting_2") {
-      status = 'MELTING';
-      current_stage = 'Melting Started';
-    } else if (subState === "pouring") {
-      status = 'TAPPING';
-      current_stage = 'Tapping';
-    } else if (subState === "completed") {
-      status = 'COMPLETED';
-      current_stage = 'Completed';
-    }
-
-    const power = isMeltingActive ? 2200 + Math.random() * 200 : 0;
-    const energy = Math.round((progress / 100) * 850);
-    const weight = Math.round((progress / 100) * batchWeight);
-
-    try {
-      await dataService.updateSmeltingRun({
-        status,
-        current_stage,
-        temperature: temp,
-        power: isMeltingActive ? power : 0,
-        energy_consumption: energy,
-        melt_weight: weight,
-        batch_progress: progress,
-        predicted_quality: 98.29
-      });
-    } catch (e) {
-      console.error("Failed to sync smelting run state:", e);
-    }
-  };
-
-  useEffect(() => {
-    if (currentStep === 4) {
-      syncSmeltingRunState(meltSubState, meltProgress, meltTemperature);
-    }
-  }, [meltSubState, meltProgress, meltTemperature, currentStep, isMeltingActive]);
 
   // Digital Twin Furnace Canvas drawing
   useEffect(() => {
@@ -1280,26 +1139,10 @@ export const Dashboard = () => {
       if (t < 100) {
         animId = requestAnimationFrame(drawOES);
       } else {
-        // Complete Scan, advance state to report
+        // Complete Scan, increment scan counter locally
         const nextScanNum = spectrometerScansCount + 1;
         setSpectrometerScansCount(nextScanNum);
         saveSpectrometerResult(nextScanNum, meltSubState);
-
-        if (meltSubState === "oes_scan_1") {
-          setMeltSubState("report_1");
-        } else if (meltSubState === "oes_scan_2") {
-          setMeltSubState("report_2");
-        } else if (meltSubState === "oes_scan_validation") {
-          setMeltSubState("ready_to_tap");
-          voiceSafetyService.triggerAlert(
-            "Spectrometer Validation Passed",
-            "Composition Verified. Furnace Ready for Tapping.",
-            1,
-            99.8,
-            "Initiate tapping sequence by clicking Pour Metal.",
-            "Tapping"
-          );
-        }
       }
     };
 
@@ -1403,10 +1246,7 @@ export const Dashboard = () => {
       if (t < 150) {
         animId = requestAnimationFrame(drawPouring);
       } else {
-        // Complete Tapping, move to final report
-        setMeltSubState("completed");
-        setCurrentStep(5); // Complete batch, show reports!
-        voiceSafetyService.speak("Tapping completed successfully.", 1, "Batch Completed");
+        // Complete Tapping, locally save quality report.
         saveQualityReport();
       }
     };
