@@ -152,6 +152,22 @@ export const Dashboard = () => {
   const [batchWeight, setBatchWeight] = useState(1000); // 1000 kg/tons
   const [weightUnit, setWeightUnit] = useState<"kg" | "t">("kg");
 
+  const formatWeight = (valueInKg: number) => {
+    if (weightUnit === 't') {
+      const val = valueInKg / 1000.0;
+      return `${val.toFixed(val < 0.1 ? 4 : 3)} t`;
+    }
+    return `${valueInKg.toFixed(0)} kg`;
+  };
+
+  const speakWeight = (valueInKg: number, name: string) => {
+    if (weightUnit === 't') {
+      const val = valueInKg / 1000.0;
+      return `${val.toFixed(3)} tonnes of ${name}`;
+    }
+    return `${valueInKg.toFixed(0)} kilograms of ${name}`;
+  };
+
   useEffect(() => {
     fetch('/api/alloys/')
       .then(res => res.json())
@@ -751,58 +767,59 @@ export const Dashboard = () => {
         "Workflow"
       );
       
-      // Start interactive guided charging simulation
-      setGuidedStep(1);
-      setTimeout(() => {
-        voiceSafetyService.speak("Next material recommendation. Add 175 kilograms of ferrochrome.", 1, "recommend_ferrochrome");
-      }, 2000);
-
-    } else if (currentStep === 4) {
-      if (meltSubState === "initial_melting") {
-        if (meltProgress === 0) {
+        // Start interactive guided charging simulation
+        setGuidedStep(1);
+        setTimeout(() => {
+          voiceSafetyService.speak("Next material recommendation. Add " + speakWeight(175, "ferrochrome") + ".", 1, "recommend_ferrochrome");
+        }, 2000);
+  
+      } else if (currentStep === 4) {
+        if (meltSubState === "initial_melting") {
+          if (meltProgress === 0) {
+            voiceSafetyService.triggerAlert(
+              "Heating Started",
+              "Material charging completed. Melting has started.",
+              1,
+              99.0,
+              "Monitor digital twin and temperature indicators.",
+              "Workflow"
+            );
+          }
+        } else if (meltSubState === "sampling_required_1") {
           voiceSafetyService.triggerAlert(
-            "Heating Started",
-            "Material charging completed. Melting has started.",
-            1,
-            99.0,
-            "Monitor digital twin and temperature indicators.",
-            "Workflow"
-          );
-        }
-      } else if (meltSubState === "sampling_required_1") {
-        voiceSafetyService.triggerAlert(
-          "Sample Required",
-          "First melt progress target achieved. Spectrometer analysis is required.",
-          2,
-          98.5,
-          "Extract molten sample and insert in OES Chamber.",
-          "Spectrometer"
-        );
-      } else if (meltSubState === "oes_scan_1") {
-        voiceSafetyService.triggerAlert(
-          "OES Analysis Running",
-          "Spectrometer analysis in progress.",
-          1,
-          99.0,
-          "Wait for spectrometer blue laser scanning sweep.",
-          "Spectrometer"
-        );
-      } else if (meltSubState === "report_1") {
-        const crTarget = selectedAlloy.composition.Cr || 0;
-        const crActual = currentComposition.Cr || 0;
-        if (crActual < crTarget) {
-          const deficit = (crTarget - crActual).toFixed(2);
-          const additionKg = Math.round(5.8 * batchWeight / 100);
-          voiceSafetyService.triggerAlert(
-            "Composition Outside Specification", 
-            `Spectrometer analysis complete. Chromium concentration is below the target specification by ${deficit} percent. Recommended correction: Add ${additionKg} kilograms of ferrochromium.`, 
-            2, 
-            99.2, 
-            `Add ${additionKg} kg of Ferrochrome raw material trim.`, 
+            "Sample Required",
+            "First melt progress target achieved. Spectrometer analysis is required.",
+            2,
+            98.5,
+            "Extract molten sample and insert in OES Chamber.",
             "Spectrometer"
           );
-        }
-      } else if (meltSubState === "melting_2") {
+        } else if (meltSubState === "oes_scan_1") {
+          voiceSafetyService.triggerAlert(
+            "OES Analysis Running",
+            "Spectrometer analysis in progress.",
+            1,
+            99.0,
+            "Wait for spectrometer blue laser scanning sweep.",
+            "Spectrometer"
+          );
+        } else if (meltSubState === "report_1") {
+          const crTarget = selectedAlloy.composition.Cr || 0;
+          const crActual = currentComposition.Cr || 0;
+          if (crActual < crTarget) {
+            const deficit = (crTarget - crActual).toFixed(2);
+            const batchWeightInKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+            const additionKg = 5.8 * batchWeightInKg / 100;
+            voiceSafetyService.triggerAlert(
+              "Composition Outside Specification", 
+              `Spectrometer analysis complete. Chromium concentration is below the target specification by ${deficit} percent. Recommended correction: Add ${speakWeight(additionKg, "ferrochromium")}.`, 
+              2, 
+              99.2, 
+              `Add ${formatWeight(additionKg)} of Ferrochrome raw material trim.`, 
+              "Spectrometer"
+            );
+          }
+        } else if (meltSubState === "melting_2") {
         voiceSafetyService.triggerAlert(
           "Refining Initiated",
           "Refining process initiated. Re-heating furnace.",
@@ -921,12 +938,18 @@ export const Dashboard = () => {
   // Autopilot for additions tracking in UI
   useEffect(() => {
     if (currentStep !== 4) return;
+    const batchWeightInKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+    const fCrAddition = 5.8 * batchWeightInKg / 100;
+    const fSiAddition = 0.6 * batchWeightInKg / 100;
+    
     if (meltSubState === "melting_2") {
-      setAdditionsApplied(prev => prev.includes("Ferrochrome (28 kg)") ? prev : [...prev, "Ferrochrome (28 kg)"]);
+      const text = `Ferrochrome (${formatWeight(fCrAddition)})`;
+      setAdditionsApplied(prev => prev.includes(text) ? prev : [...prev, text]);
     } else if (meltSubState === "ready_to_tap") {
-      setAdditionsApplied(prev => prev.includes("Ferrosilicon (3.2 kg)") ? prev : [...prev, "Ferrosilicon (3.2 kg)"]);
+      const text = `Ferrosilicon (${formatWeight(fSiAddition)})`;
+      setAdditionsApplied(prev => prev.includes(text) ? prev : [...prev, text]);
     }
-  }, [currentStep, meltSubState]);
+  }, [currentStep, meltSubState, batchWeight, weightUnit]);
 
   // Digital Twin Furnace Canvas drawing
   useEffect(() => {
@@ -1811,8 +1834,8 @@ export const Dashboard = () => {
                           <span className="text-[10px] font-mono text-cyan-400 uppercase font-bold">Step 1: Chromium Trim</span>
                           {guidedStep > 1 && <span className="text-xs text-emerald-400 font-bold">✓ Complete</span>}
                         </div>
-                        <h4 className="text-sm font-bold text-white font-outfit uppercase">Load 175 kg Ferrochrome</h4>
-                        <p className="text-[11px] text-slate-400 font-mono mt-1">Status: {guidedStep === 1 ? 'Awaiting loading confirmation...' : guidedStep > 1 ? '175 kg successfully loaded' : 'Queued'}</p>
+                        <h4 className="text-sm font-bold text-white font-outfit uppercase">Load {formatWeight(175)} Ferrochrome</h4>
+                        <p className="text-[11px] text-slate-400 font-mono mt-1">Status: {guidedStep === 1 ? 'Awaiting loading confirmation...' : guidedStep > 1 ? `${formatWeight(175)} successfully loaded` : 'Queued'}</p>
                         
                         {guidedStep === 1 && (
                           <Button 
@@ -1821,7 +1844,7 @@ export const Dashboard = () => {
                               setGuidedStep(2);
                               voiceSafetyService.speak("Ferrochrome successfully added.", 1, "added_ferrochrome");
                               setTimeout(() => {
-                                voiceSafetyService.speak("Please add one hundred twenty kilograms of nickel.", 1, "recommend_nickel");
+                                voiceSafetyService.speak("Please add " + speakWeight(120, "nickel") + ".", 1, "recommend_nickel");
                               }, 2000);
                             }}
                             className="bg-cyan-400 hover:bg-cyan-500 text-slate-950 font-bold text-[10px] mt-3 h-8 w-full"
@@ -1843,8 +1866,8 @@ export const Dashboard = () => {
                           <span className="text-[10px] font-mono text-cyan-400 uppercase font-bold">Step 2: Nickel Trim</span>
                           {guidedStep > 2 && <span className="text-xs text-emerald-400 font-bold">✓ Complete</span>}
                         </div>
-                        <h4 className="text-sm font-bold text-white font-outfit uppercase">Load 120 kg Nickel</h4>
-                        <p className="text-[11px] text-slate-400 font-mono mt-1">Status: {guidedStep === 2 ? 'Awaiting loading confirmation...' : guidedStep > 2 ? '120 kg successfully loaded' : 'Queued'}</p>
+                        <h4 className="text-sm font-bold text-white font-outfit uppercase">Load {formatWeight(120)} Nickel</h4>
+                        <p className="text-[11px] text-slate-400 font-mono mt-1">Status: {guidedStep === 2 ? 'Awaiting loading confirmation...' : guidedStep > 2 ? `${formatWeight(120)} successfully loaded` : 'Queued'}</p>
                         
                         {guidedStep === 2 && (
                           <Button 
@@ -2142,7 +2165,11 @@ export const Dashboard = () => {
                             <div className="space-y-3 font-mono text-xs">
                               <div className="text-red-400 font-bold uppercase">Chromium content low by 1.80%</div>
                               <div className="p-3 bg-slate-950/40 border border-slate-900 rounded-lg text-slate-300">
-                                <strong>Recommendation:</strong> Add 28.0 kg Ferrochrome (FeCr 65%)
+                                <strong>Recommendation:</strong> Add {(() => {
+                                  const batchWeightInKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+                                  const fCrAddition = 5.8 * batchWeightInKg / 100;
+                                  return formatWeight(fCrAddition);
+                                })()} Ferrochrome (FeCr 65%)
                               </div>
                               <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400">
                                 <div>RECOVERY RATE: <span className="text-white">98.5%</span></div>
@@ -2153,7 +2180,11 @@ export const Dashboard = () => {
                             <div className="space-y-3 font-mono text-xs">
                               <div className="text-yellow-400 font-bold uppercase">Minor Silicon trace adjustment needed</div>
                               <div className="p-3 bg-slate-950/40 border border-slate-900 rounded-lg text-slate-300">
-                                <strong>Recommendation:</strong> Add 3.2 kg Ferrosilicon (FeSi 75%)
+                                <strong>Recommendation:</strong> Add {(() => {
+                                  const batchWeightInKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+                                  const fSiAddition = 0.6 * batchWeightInKg / 100;
+                                  return formatWeight(fSiAddition);
+                                })()} Ferrosilicon (FeSi 75%)
                               </div>
                               <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-400">
                                 <div>RECOVERY RATE: <span className="text-white">99.2%</span></div>
@@ -2164,11 +2195,26 @@ export const Dashboard = () => {
                         </div>
 
                         <Button 
-                          onClick={() => {
+                          onClick={async () => {
+                            const batchWeightInKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+                            const fCrAddition = 5.8 * batchWeightInKg / 100;
+                            const fSiAddition = 0.6 * batchWeightInKg / 100;
+                            
                             if (meltSubState === "report_1") {
-                              applyTrimAdjustment("Ferrochrome", 28.0);
+                              applyTrimAdjustment("Ferrochrome", fCrAddition);
+                              await dataService.updateSmeltingRun({
+                                status: 'MELTING',
+                                current_stage: 'Refining 2',
+                                batch_progress: 35.0,
+                                input_parameters: { last_stage_change: new Date().toISOString(), tick_count: 0 }
+                              });
                             } else {
-                              applyTrimAdjustment("Ferrosilicon", 3.2);
+                              applyTrimAdjustment("Ferrosilicon", fSiAddition);
+                              await dataService.updateSmeltingRun({
+                                status: 'READY_TO_TAP',
+                                current_stage: 'Ready To Tap',
+                                input_parameters: { last_stage_change: new Date().toISOString(), tick_count: 0 }
+                              });
                             }
                           }}
                           className="bg-primary hover:bg-primary/90 text-slate-950 font-black text-xs w-full py-5 mt-4"
