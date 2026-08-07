@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Info, CheckCircle } from 'lucide-react';
@@ -14,30 +13,38 @@ interface Alert {
 }
 
 export const AlertPanel = () => {
-  const alerts: Alert[] = [
-    {
-      id: '1',
-      type: 'critical',
-      title: 'Carbon Content Critical',
-      message: 'Carbon level at 3.45% is approaching lower tolerance limit. Immediate attention required.',
-      timestamp: new Date(Date.now() - 5 * 60 * 1000)
-    },
-    {
-      id: '2',
-      type: 'warning',
-      title: 'Model Confidence Low',
-      message: 'AI recommendation confidence below 80% for last 3 readings. Consider manual review.',
-      timestamp: new Date(Date.now() - 15 * 60 * 1000)
-    },
-    {
-      id: '3',
-      type: 'info',
-      title: 'Successful Addition',
-      message: 'FeSi 75% addition of 8.2kg completed successfully. Silicon now within optimal range.',
-      timestamp: new Date(Date.now() - 45 * 60 * 1000),
-      resolved: true
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadAlerts = async () => {
+    try {
+      const res = await fetch('/api/anomalies/');
+      if (res.ok) {
+        const data = await res.json();
+        const results = data.results || (Array.isArray(data) ? data : []);
+        const mapped = results.map((item: any) => ({
+          id: item.id,
+          type: item.severity === 'critical' || item.severity === 'high' ? 'critical' : item.severity === 'medium' ? 'warning' : 'info',
+          title: item.type || 'Anomaly Detected',
+          message: item.description,
+          timestamp: new Date(item.timestamp),
+          resolved: item.resolved
+        }));
+        setAlerts(mapped);
+      }
+    } catch (e) {
+      console.error("Failed to load anomalies in AlertPanel:", e);
+    } finally {
+      setIsLoading(false);
     }
-  ];
+  };
+
+  useEffect(() => {
+    loadAlerts();
+    const interval = setInterval(loadAlerts, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
 
   const getAlertIcon = (type: string) => {
     switch (type) {

@@ -44,6 +44,7 @@ urlpatterns = [
     path('dashboard/metrics/', advanced_views.dashboard_metrics, name='dashboard_metrics'),
     
     # New Zero-Mock dynamic data endpoints
+    path('landing/stats/', advanced_views.landing_stats, name='landing_stats'),
     path('models/performance/', advanced_views.model_performance, name='model_performance'),
     path('charts/production-trends/', advanced_views.production_trends, name='production_trends'),
     path('charts/material-usage/', advanced_views.material_usage, name='material_usage'),

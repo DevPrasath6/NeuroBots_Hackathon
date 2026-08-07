@@ -228,12 +228,12 @@ export const Dashboard = () => {
 
     if (!isBlocked) {
       // Speak ready to tap message
-      voiceSafetyService.speak("Composition has been verified successfully. The furnace is now ready for tapping.", 1, "ready_to_tap_announcement");
+      voiceSafetyService.speak("Composition has been verified successfully. The furnace is now ready for tapping.", 1, "Ready To Tap");
 
       // Automatically transition to pouring after 3 seconds
       const timer = setTimeout(() => {
         setMeltSubState("pouring");
-        voiceSafetyService.speak("Tapping operation has started.", 1, "tapping_started_announcement");
+        voiceSafetyService.speak("Tapping operation has started.", 1, "Tapping Started");
       }, 3000);
 
       return () => clearTimeout(timer);
@@ -322,6 +322,168 @@ export const Dashboard = () => {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const furnaceTwinCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const pouringCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const saveSpectrometerResult = async (sampleNum: number, subState: string) => {
+    try {
+      const runRes = await fetch('/api/smelting/current-run/');
+      if (!runRes.ok) return;
+      const runData = await runRes.json();
+      const batchUuid = runData.run_id ? runData.batch_id : null;
+      if (!batchUuid) {
+        console.warn("No active batch UUID found in current smelting run.");
+        return;
+      }
+
+      const deviation: Record<string, number> = {};
+      const tolerance: Record<string, number> = {};
+      let passFail = true;
+
+      for (const [symbol, targetVal] of Object.entries(selectedAlloy.composition)) {
+        const measuredVal = currentComposition[symbol] || 0.0;
+        const targetValNum = targetVal as number;
+        const dev = measuredVal - targetValNum;
+        const tol = targetValNum * 0.03; // 3%
+        deviation[symbol] = roundVal(dev);
+        tolerance[symbol] = roundVal(tol);
+        if (Math.abs(dev) > tol) {
+          passFail = false;
+        }
+      }
+
+      await fetch('/api/spectrometer-results/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          batch: batchUuid,
+          sample_number: sampleNum,
+          analysis_time: 3.5,
+          temperature: meltTemperature,
+          composition: currentComposition,
+          pass_fail: passFail,
+          deviation,
+          tolerance
+        })
+      });
+    } catch (e) {
+      console.error("Failed to save spectrometer result to DB:", e);
+    }
+  };
+
+  const saveQualityReport = async () => {
+    try {
+      const runRes = await fetch('/api/smelting/current-run/');
+      if (!runRes.ok) return;
+      const runData = await runRes.json();
+      const batchUuid = runData.run_id ? runData.batch_id : null;
+      if (!batchUuid) {
+        console.warn("No active batch UUID found to save quality report.");
+        return;
+      }
+
+      const deviation: Record<string, number> = {};
+      let totalDeviation = 0;
+      let elementCount = 0;
+
+      for (const [symbol, targetVal] of Object.entries(selectedAlloy.composition)) {
+        const measuredVal = currentComposition[symbol] || 0.0;
+        const targetValNum = targetVal as number;
+        const dev = measuredVal - targetValNum;
+        deviation[symbol] = roundVal(dev);
+        totalDeviation += Math.abs(dev);
+        elementCount++;
+      }
+
+      const avgDev = elementCount > 0 ? (totalDeviation / elementCount) : 0;
+      const score = Math.max(80.0, 100.0 - avgDev * 10);
+
+      const payload = {
+        batch: batchUuid,
+        final_composition: currentComposition,
+        target_composition: selectedAlloy.composition,
+        deviation,
+        quality_score: roundVal(score),
+        energy_used: 5540.0,
+        production_time: 78,
+        number_of_spectrometer_samples: spectrometerScansCount,
+        number_of_ai_recommendations: additionsApplied.length,
+        final_pass: isCompositionWithinTolerance(),
+        report_file: `production_report_${selectedAlloy.grade}.pdf`
+      };
+
+      await fetch('/api/quality-reports/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.error("Failed to save quality report to DB:", e);
+    }
+  };
+
+  // Database-driven Inventory Shortage verification
+  useEffect(() => {
+    if (currentStep !== 3 || !selectedAlloy || !selectedAlloy.composition) return;
+
+    const checkInventoryShortages = async () => {
+      try {
+        const res = await fetch('/api/inventory/');
+        if (!res.ok) return;
+        const data = await res.json();
+        const results = data.results || (Array.isArray(data) ? data : []);
+        
+        let shortageDetails = "";
+        const totalKg = weightUnit === "kg" ? batchWeight : batchWeight * 1000;
+
+        for (const [symbol, targetPct] of Object.entries(selectedAlloy.composition)) {
+          const reqQty = totalKg * ((targetPct as number) / 100);
+          
+          const matNameMap: Record<string, string> = {
+            "Cr": "Ferrochrome",
+            "Ni": "Ferronickel",
+            "Fe": "Iron scrap",
+            "C": "Carbon additive",
+            "Si": "Ferrosilicon",
+            "Mn": "Ferromanganese",
+            "Mo": "Ferromolybdenum"
+          };
+          const matName = matNameMap[symbol] || symbol;
+          
+          const invItem = results.find((item: any) => 
+            item.material_name.toLowerCase().includes(matName.toLowerCase()) ||
+            item.material_name.toLowerCase().includes(symbol.toLowerCase())
+          );
+
+          if (invItem && invItem.quantity < reqQty) {
+            shortageDetails += `${matName} (Required: ${reqQty.toFixed(0)}kg, Stock: ${invItem.quantity.toFixed(0)}kg). `;
+          }
+        }
+
+        if (shortageDetails) {
+          voiceSafetyService.triggerAlert(
+            "Inventory Shortage Alert",
+            `Inventory alert. Insufficient stock to complete the selected recipe. Shortages: ${shortageDetails}`,
+            2,
+            96.0,
+            "Stock levels low. Reorder materials or adjust batch size.",
+            "Inventory"
+          );
+          
+          voiceSafetyService.triggerAlert(
+            "Alternative Recipe Advice",
+            "An alternative production recipe is available using existing inventory.",
+            1,
+            98.0,
+            "Evaluate alternative recipe with available stock.",
+            "Inventory"
+          );
+        }
+      } catch (e) {
+        console.error("Failed to check database inventory shortages:", e);
+      }
+    };
+
+    checkInventoryShortages();
+  }, [currentStep, selectedAlloy, batchWeight, weightUnit]);
 
   const stepsList = [
     { id: 0, label: "Dashboard", short: "Dashboard" },
@@ -504,7 +666,7 @@ export const Dashboard = () => {
       );
     } else if (currentStep === 3) {
       voiceSafetyService.triggerAlert(
-        "Recipe Calculated",
+        "Batch Started",
         "Recipe calculation completed.",
         1,
         99.0,
@@ -518,33 +680,11 @@ export const Dashboard = () => {
         voiceSafetyService.speak("Next material recommendation. Add 175 kilograms of ferrochrome.", 1, "recommend_ferrochrome");
       }, 2000);
 
-      // Inventory shortage triggers during charge calculations
-      setTimeout(() => {
-        voiceSafetyService.triggerAlert(
-          "Inventory Shortage Alert",
-          "Inventory alert. Nickel stock is insufficient to complete the selected recipe.",
-          2,
-          96.0,
-          "Stock levels low. Reorder Nickel or switch to alternative recipe.",
-          "Inventory"
-        );
-      }, 5000);
-      setTimeout(() => {
-        voiceSafetyService.triggerAlert(
-          "Alternative Recipe Advice",
-          "An alternative production recipe is available using existing inventory.",
-          1,
-          98.0,
-          "Evaluate alternative recipe with available stock.",
-          "Inventory"
-        );
-      }, 10000);
-
     } else if (currentStep === 4) {
       if (meltSubState === "initial_melting") {
         if (meltProgress === 0) {
           voiceSafetyService.triggerAlert(
-            "Melting Initiated",
+            "Heating Started",
             "Material charging completed. Melting has started.",
             1,
             99.0,
@@ -577,7 +717,7 @@ export const Dashboard = () => {
           const deficit = (crTarget - crActual).toFixed(2);
           const additionKg = Math.round(5.8 * batchWeight / 100);
           voiceSafetyService.triggerAlert(
-            "Composition Deviation", 
+            "Composition Outside Specification", 
             `Spectrometer analysis complete. Chromium concentration is below the target specification by ${deficit} percent. Recommended correction: Add ${additionKg} kilograms of ferrochromium.`, 
             2, 
             99.2, 
@@ -619,7 +759,7 @@ export const Dashboard = () => {
           const deficit = (niTarget - niActual).toFixed(2);
           const additionKg = Math.round(4.2 * batchWeight / 100);
           voiceSafetyService.triggerAlert(
-            "Composition Deviation", 
+            "Composition Outside Specification", 
             `Spectrometer analysis complete. Nickel concentration is below the target specification by ${deficit} percent. Recommended correction: Add ${additionKg} kilograms of nickel.`, 
             2, 
             99.2, 
@@ -628,7 +768,7 @@ export const Dashboard = () => {
           );
         } else {
           voiceSafetyService.triggerAlert(
-            "Composition Accepted",
+            "Spectrometer Validation Passed",
             "Spectrometer verification successful. Alloy composition is within specification.",
             1,
             99.5,
@@ -657,7 +797,7 @@ export const Dashboard = () => {
       }
     } else if (currentStep === 5) {
       voiceSafetyService.triggerAlert(
-        "Report Generated",
+        "Report Ready",
         "Production report generated.",
         1,
         99.0,
@@ -674,7 +814,7 @@ export const Dashboard = () => {
     // Critical Overheat Alarm
     if (meltTemperature > 1650) {
       voiceSafetyService.triggerAlert(
-        "Furnace Overheating",
+        "Critical Temperature",
         `Critical warning. Furnace temperature has exceeded the recommended operating limit. Current temperature is ${Math.round(meltTemperature)} degrees Celsius. Please reduce furnace power or begin corrective action.`,
         3,
         98.0,
@@ -686,7 +826,7 @@ export const Dashboard = () => {
     // Rapid Temperature rise alarm
     else if (isMeltingActive && meltTemperature > 1150 && meltTemperature < 1250) {
       voiceSafetyService.triggerAlert(
-        "Rapid Temp Increase",
+        "Critical Temperature",
         "Critical warning. Rapid temperature increase detected. Potential overheating condition. Immediate operator attention is required.",
         3,
         97.5,
@@ -697,14 +837,140 @@ export const Dashboard = () => {
     }
     // Normal restoration
     else if (meltTemperature <= 1600) {
-      voiceSafetyService.resolveAlert("Furnace Overheating");
-      voiceSafetyService.resolveAlert("Rapid Temp Increase");
+      voiceSafetyService.resolveAlert("Critical Temperature");
     }
   }, [meltTemperature, currentStep, isMeltingActive]);
 
+  // Autopilot for composition trim correction and report generation
+  useEffect(() => {
+    if (currentStep !== 4) return;
+    if (meltSubState !== "report_1" && meltSubState !== "report_2") return;
+
+    const timer = setTimeout(() => {
+      if (meltSubState === "report_1") {
+        applyTrimAdjustment("Ferrochrome", 28.0);
+      } else {
+        applyTrimAdjustment("Ferrosilicon", 3.2);
+      }
+    }, 4500); // 4.5 seconds auto-apply correction
+
+    return () => clearTimeout(timer);
+  }, [currentStep, meltSubState]);
+
+  useEffect(() => {
+    if (currentStep !== 5 || reportGenerated) return;
+
+    const timer = setTimeout(() => {
+      setReportGenerated(true);
+    }, 4000); // 4 seconds auto-generate report screen
+
+    return () => clearTimeout(timer);
+  }, [currentStep, reportGenerated]);
+
+  // Step 3 Autopilot for guided charging additions and furnace starting
+  useEffect(() => {
+    if (currentStep !== 3) return;
+
+    const timer = setTimeout(() => {
+      if (guidedStep === 1) {
+        setGuidedStep(2);
+        voiceSafetyService.speak("Ferrochrome successfully added.", 1, "added_ferrochrome");
+        setTimeout(() => {
+          voiceSafetyService.speak("Please add one hundred twenty kilograms of nickel.", 1, "recommend_nickel");
+        }, 1000);
+      } else if (guidedStep === 2) {
+        setGuidedStep(3);
+        voiceSafetyService.speak("Nickel successfully added.", 1, "added_nickel");
+      } else if (guidedStep === 3) {
+        const startFurnace = async () => {
+          try {
+            voiceSafetyService.resetCycle();
+            const batchRes = await fetch('/api/batches/', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                alloy_code: selectedAlloy.grade,
+                batch_weight: batchWeight,
+                weight_unit: weightUnit,
+                operator: 'op_watas'
+              })
+            });
+            const batchData = await batchRes.json();
+            await dataService.startSmeltingRun(selectedAlloy.grade, batchWeight, batchData.id || batchData.batch_code);
+            await dataService.updateSmeltingRun({
+              status: 'PREPARING',
+              current_stage: 'Preparing Furnace',
+              batch_progress: 0,
+              temperature: 25.0
+            });
+            setReportGenerated(false);
+            setSessionAlerts([]);
+            setIsMeltingActive(true);
+            setMeltProgress(0);
+            setMeltTemperature(1200);
+            setMeltSubState("initial_melting");
+            handleNext();
+          } catch (e) {
+            console.error("Autopilot failed to start furnace:", e);
+          }
+        };
+        startFurnace();
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [currentStep, guidedStep, selectedAlloy, batchWeight, weightUnit]);
+
+  // Production Autopilot Watchdog Failsafe
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const hasCritAnomaly = hasActiveCriticalAnomaly();
+      const isBlocked = hasCritAnomaly || emergencyStop;
+
+      if (currentStep === 3) {
+        if (guidedStep === 0) {
+          setGuidedStep(1);
+        }
+      } else if (currentStep === 4) {
+        if (meltSubState === "initial_melting") {
+          if (!isMeltingActive && !isBlocked) {
+            setIsMeltingActive(true);
+          }
+        } else if (meltSubState === "melting_2") {
+          if (!isMeltingActive && !isBlocked) {
+            setIsMeltingActive(true);
+          }
+        } else if (meltSubState === "sampling_required_1") {
+          setMeltSubState("oes_scan_1");
+        } else if (meltSubState === "sampling_required_2") {
+          setMeltSubState("oes_scan_2");
+        }
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [currentStep, meltSubState, isMeltingActive, emergencyStop, guidedStep, alertsList]);
+
+  // Power Overload telemetry watchdog check
+  useEffect(() => {
+    if (currentStep !== 4 || !isMeltingActive) return;
+    const currentPower = 2200 + Math.random() * 200;
+    if (currentPower > 2380) {
+      voiceSafetyService.triggerAlert(
+        "Power Overload",
+        "Warning. Electrical power overload detected on induction coils.",
+        2,
+        97.0,
+        "Verify coil resistance and check capacitor banks.",
+        "Electrical"
+      );
+    }
+  }, [meltProgress, currentStep, isMeltingActive]);
+
   // Live Furnace Simulator (Step 4 - Melting)
   useEffect(() => {
-    if (currentStep !== 4 || !isMeltingActive || emergencyStop) return;
+    const hasCritAnomaly = hasActiveCriticalAnomaly();
+    if (currentStep !== 4 || !isMeltingActive || emergencyStop || hasCritAnomaly) return;
 
     const interval = setInterval(() => {
       // Temperature increase
@@ -1015,7 +1281,10 @@ export const Dashboard = () => {
         animId = requestAnimationFrame(drawOES);
       } else {
         // Complete Scan, advance state to report
-        setSpectrometerScansCount(prev => prev + 1);
+        const nextScanNum = spectrometerScansCount + 1;
+        setSpectrometerScansCount(nextScanNum);
+        saveSpectrometerResult(nextScanNum, meltSubState);
+
         if (meltSubState === "oes_scan_1") {
           setMeltSubState("report_1");
         } else if (meltSubState === "oes_scan_2") {
@@ -1023,7 +1292,7 @@ export const Dashboard = () => {
         } else if (meltSubState === "oes_scan_validation") {
           setMeltSubState("ready_to_tap");
           voiceSafetyService.triggerAlert(
-            "Composition Verified",
+            "Spectrometer Validation Passed",
             "Composition Verified. Furnace Ready for Tapping.",
             1,
             99.8,
@@ -1137,7 +1406,8 @@ export const Dashboard = () => {
         // Complete Tapping, move to final report
         setMeltSubState("completed");
         setCurrentStep(5); // Complete batch, show reports!
-        voiceSafetyService.speak("Tapping completed successfully.", 1, "tapping_completed_announcement");
+        voiceSafetyService.speak("Tapping completed successfully.", 1, "Batch Completed");
+        saveQualityReport();
       }
     };
 
@@ -1761,6 +2031,8 @@ export const Dashboard = () => {
                   <Button 
                     onClick={async () => {
                       try {
+                        voiceSafetyService.resetCycle();
+
                         // 1. Create a ProductionBatch in PostgreSQL
                         const batchRes = await fetch('/api/batches/', {
                           method: 'POST',

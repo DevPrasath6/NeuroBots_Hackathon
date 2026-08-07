@@ -136,12 +136,28 @@ class VoiceSafetyService {
   private settingsListeners: Set<SettingsListener> = new Set();
   private repeatIntervals: Map<string, any> = new Map();
   private lastSpokenTime: Map<string, number> = new Map();
+  private anomalyVoiceCount: number = 0;
+  private spokenKeys: Set<string> = new Set();
 
   // Custom priority-based voice queue parameters
   private queue: QueuedUtterance[] = [];
   private activeUtterance: SpeechSynthesisUtterance | null = null;
   private activePriority: number = 0;
   private cachedOperatorId: string | null = null;
+
+  public resetCycle() {
+    this.anomalyVoiceCount = 0;
+    this.spokenKeys.clear();
+    this.lastSpokenTime.clear();
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    this.queue = [];
+    this.activeUtterance = null;
+    this.activePriority = 0;
+    this.alerts = [];
+    this.notifyAlerts();
+  }
 
   constructor() {
     // Load settings from localStorage if available
@@ -240,8 +256,35 @@ class VoiceSafetyService {
 
   // --- Speak Utterance (Priority queue manager) ---
   public speak(text: string, priority: 1 | 2 | 3, duplicateKey?: string) {
+    const key = duplicateKey || text;
+    
+    // Strict allowed voice events check
+    const ALLOWED_VOICE_EVENTS = [
+      "Batch Started",
+      "Heating Started",
+      "Critical Temperature",
+      "Power Overload",
+      "Composition Outside Specification",
+      "Spectrometer Validation Passed",
+      "Ready To Tap",
+      "Tapping Started",
+      "Batch Completed",
+      "Report Ready"
+    ];
+
+    const isAllowedEvent = ALLOWED_VOICE_EVENTS.includes(key);
+
+    if (!isAllowedEvent) {
+      // Show visual toast popup but DO NOT play audio!
+      toast({
+        title: priority === 3 ? "Critical Alert" : priority === 2 ? "System Warning" : "AI Advisor",
+        description: text,
+        variant: priority === 3 ? "destructive" : "default",
+      });
+      return;
+    }
+
     if (!this.settings.enabled) {
-      // Still show toast popups even if the voice audio setting is disabled!
       toast({
         title: priority === 3 ? "Critical AI Voice Alert" : priority === 2 ? "Warning AI Voice Alert" : "AI Voice Assistant",
         description: text,
@@ -250,11 +293,25 @@ class VoiceSafetyService {
       return;
     }
 
+    // Prevent speaking duplicate keys in the current cycle
+    if (this.spokenKeys.has(key)) {
+      return;
+    }
+
+    // Limit anomaly warnings (priority 2)
+    if (priority === 2) {
+      if (this.anomalyVoiceCount >= 2) {
+        return;
+      }
+      this.anomalyVoiceCount++;
+    }
+
+    this.spokenKeys.add(key);
+
     const now = Date.now();
     let cooldown = 15000; // default 15s
 
     // Set custom cooldown periods
-    const key = duplicateKey || text;
     if (key.includes("Overheating") || key.includes("Temperature")) {
       cooldown = 45000; // High Temperature repeats only every 45 seconds
     } else if (key.includes("Deviation") || key.includes("Spectrometer")) {

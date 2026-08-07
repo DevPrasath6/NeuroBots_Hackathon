@@ -45,12 +45,7 @@ class BatchRecipeSerializer(serializers.ModelSerializer):
         model = BatchRecipe
         fields = '__all__'
 
-class ProductionBatchSerializer(serializers.ModelSerializer):
-    recipes = BatchRecipeSerializer(many=True, read_only=True)
-    
-    class Meta:
-        model = ProductionBatch
-        fields = '__all__'
+# ProductionBatchSerializer defined at bottom to support nested classes
 
 class FurnaceReadingSerializer(serializers.ModelSerializer):
     class Meta:
@@ -111,10 +106,14 @@ class InventorySerializer(serializers.ModelSerializer):
     quantity = serializers.FloatField(source='current_stock')
     material_type = serializers.SerializerMethodField()
     quality_grade = serializers.SerializerMethodField()
+    minimum_stock = serializers.FloatField(required=False)
+    maximum_stock = serializers.FloatField(required=False)
+    cost = serializers.FloatField(required=False)
+    location = serializers.CharField(required=False)
 
     class Meta:
         model = Inventory
-        fields = ['id', 'material_name', 'material_type', 'quantity', 'unit', 'supplier', 'quality_grade', 'last_updated']
+        fields = ['id', 'material_name', 'material_type', 'quantity', 'unit', 'supplier', 'quality_grade', 'minimum_stock', 'maximum_stock', 'cost', 'location', 'last_updated']
 
     def get_material_type(self, obj):
         return "raw"
@@ -146,3 +145,15 @@ class SmeltingRunSerializer(serializers.ModelSerializer):
     class Meta:
         model = SmeltingRun
         fields = '__all__'
+
+class ProductionBatchSerializer(serializers.ModelSerializer):
+    recipes = BatchRecipeSerializer(many=True, read_only=True)
+    alloy_code = serializers.CharField(source='alloy.code', read_only=True)
+    alloy_name = serializers.CharField(source='alloy.name', read_only=True)
+    quality_report = QualityReportSerializer(read_only=True)
+    anomalies = AnomalySerializer(many=True, read_only=True)
+    
+    class Meta:
+        model = ProductionBatch
+        fields = '__all__'
+

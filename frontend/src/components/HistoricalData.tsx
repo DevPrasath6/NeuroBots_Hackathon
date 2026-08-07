@@ -8,17 +8,21 @@ import { Button } from '@/components/ui/button';
 export const HistoricalData = () => {
   const [accuracyData, setAccuracyData] = useState<any[]>([]);
   const [additionData, setAdditionData] = useState<any[]>([]);
+  const [batches, setBatches] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const loadData = () => {
     setIsLoading(true);
     Promise.all([
       fetch('/api/charts/production-trends/').then(r => r.json()),
-      fetch('/api/charts/material-usage/').then(r => r.json())
+      fetch('/api/charts/material-usage/').then(r => r.json()),
+      fetch('/api/batches/').then(r => r.json())
     ])
-    .then(([trends, usage]) => {
+    .then(([trends, usage, batchesData]) => {
       setAccuracyData(trends);
       setAdditionData(usage);
+      const list = batchesData.results || (Array.isArray(batchesData) ? batchesData : []);
+      setBatches(list.filter((b: any) => b.status === 'COMPLETED'));
       setIsLoading(false);
     })
     .catch(err => {
@@ -107,6 +111,59 @@ export const HistoricalData = () => {
                     <Bar dataKey="count" fill="#94a3af" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Table of Completed Batches */}
+            <div className="mt-8 pt-8 border-t border-slate-200 col-span-1 lg:col-span-2">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4 uppercase tracking-wider font-mono">Completed Production Batches</h3>
+              {batches.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs font-mono">No completed batches logged in database.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs font-mono">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500 uppercase pb-2">
+                        <th className="pb-2">Batch ID</th>
+                        <th className="pb-2">Alloy</th>
+                        <th className="pb-2">Operator</th>
+                        <th className="pb-2">Weight</th>
+                        <th className="pb-2">Quality</th>
+                        <th className="pb-2">Energy</th>
+                        <th className="pb-2">Anomalies</th>
+                        <th className="pb-2">Completed At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {batches.map((b) => (
+                        <tr key={b.id} className="border-b border-slate-100 py-3 text-slate-700">
+                          <td className="py-2.5 font-bold text-slate-900">{b.batch_code}</td>
+                          <td className="py-2.5">{b.alloy_code || b.alloy_name || "316L"}</td>
+                          <td className="py-2.5">{b.operator}</td>
+                          <td className="py-2.5">{b.batch_weight} {b.weight_unit}</td>
+                          <td className="py-2.5">
+                            {b.quality_report ? (
+                              <span className={b.quality_report.final_pass ? "text-emerald-600 font-bold" : "text-rose-600 font-bold"}>
+                                {b.quality_report.final_pass ? "PASS" : "FAIL"} ({b.quality_report.quality_score}%)
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">N/A</span>
+                            )}
+                          </td>
+                          <td className="py-2.5">{b.energy_used || (b.quality_report ? b.quality_report.energy_used : "5540")} kWh</td>
+                          <td className="py-2.5">
+                            {b.anomalies && b.anomalies.length > 0 ? (
+                              <span className="text-amber-600 font-bold">{b.anomalies.length}</span>
+                            ) : (
+                              <span className="text-slate-400">None</span>
+                            )}
+                          </td>
+                          <td className="py-2.5">{new Date(b.actual_completion || b.creation_time).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>

@@ -21,73 +21,56 @@ interface InventoryItem {
 }
 
 export const InventoryManagement = () => {
-  const [inventory, setInventory] = useState<InventoryItem[]>([
-    {
-      id: '1',
-      name: 'FeSi 75%',
-      currentStock: 250,
-      minThreshold: 100,
-      maxCapacity: 500,
-      unit: 'kg',
-      costPerUnit: 14.80,
-      lastRestocked: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-      supplier: 'Alloy Corp',
-      usage24h: 12.5,
-      estimatedDaysLeft: 20
-    },
-    {
-      id: '2',
-      name: 'Mn Metal',
-      currentStock: 45,
-      minThreshold: 50,
-      maxCapacity: 200,
-      unit: 'kg',
-      costPerUnit: 18.50,
-      lastRestocked: new Date(Date.now() - 12 * 24 * 60 * 60 * 1000),
-      supplier: 'Manganese Ltd',
-      usage24h: 3.2,
-      estimatedDaysLeft: 14
-    },
-    {
-      id: '3',
-      name: 'FeCr LC',
-      currentStock: 180,
-      minThreshold: 80,
-      maxCapacity: 300,
-      unit: 'kg',
-      costPerUnit: 22.30,
-      lastRestocked: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
-      supplier: 'Chrome Solutions',
-      usage24h: 8.7,
-      estimatedDaysLeft: 21
-    },
-    {
-      id: '4',
-      name: 'SiC (Silicon Carbide)',
-      currentStock: 25,
-      minThreshold: 30,
-      maxCapacity: 100,
-      unit: 'kg',
-      costPerUnit: 35.60,
-      lastRestocked: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000),
-      supplier: 'Silicon Tech',
-      usage24h: 2.1,
-      estimatedDaysLeft: 12
-    },
-    {
-      id: '5',
-      name: 'Al Wire',
-      currentStock: 320,
-      minThreshold: 150,
-      maxCapacity: 500,
-      unit: 'kg',
-      costPerUnit: 8.90,
-      lastRestocked: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-      supplier: 'Aluminum Co',
-      usage24h: 15.2,
-      estimatedDaysLeft: 21
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadInventory = async () => {
+    try {
+      const res = await fetch('/api/inventory/');
+      if (res.ok) {
+        const data = await res.json();
+        const results = data.results || (Array.isArray(data) ? data : []);
+        const mapped = results.map((item: any) => ({
+          id: item.id,
+          name: item.material_name,
+          currentStock: item.quantity,
+          minThreshold: item.minimum_stock || 100,
+          maxCapacity: item.maximum_stock || 1000,
+          unit: item.unit || "kg",
+          costPerUnit: item.cost || 5.0,
+          lastRestocked: new Date(item.last_updated),
+          supplier: item.supplier || "Vendor",
+          usage24h: 12.5,
+          estimatedDaysLeft: Math.round(item.quantity / 12.5) || 10
+        }));
+        setInventory(mapped);
+      }
+    } catch (e) {
+      console.error("Failed to load inventory from PostgreSQL:", e);
+    } finally {
+      setIsLoading(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    loadInventory();
+  }, []);
+
+  const handleQuantityAdjust = async (id: string, currentVal: number, amount: number) => {
+    try {
+      const newVal = Math.max(0, currentVal + amount);
+      const res = await fetch(`/api/inventory/${id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_stock: newVal })
+      });
+      if (res.ok) {
+        loadInventory();
+      }
+    } catch (e) {
+      console.error("Failed to adjust quantity in PostgreSQL:", e);
+    }
+  };
 
   const getStockStatus = (item: InventoryItem) => {
     const percentage = (item.currentStock / item.maxCapacity) * 100;
@@ -115,6 +98,10 @@ export const InventoryManagement = () => {
 
   const criticalItems = inventory.filter(item => getStockStatus(item) === 'critical').length;
   const lowStockItems = inventory.filter(item => getStockStatus(item) === 'low').length;
+
+  if (isLoading) {
+    return <div className="text-center py-16 text-slate-500 text-sm font-mono">Querying PostgreSQL inventory catalog...</div>;
+  }
 
   return (
     <Card className="bg-card border-border">
@@ -216,10 +203,10 @@ export const InventoryManagement = () => {
                     </div>
                     
                     <div className="flex items-center space-x-2">
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" onClick={() => handleQuantityAdjust(item.id, item.currentStock, -50)}>
                         <Minus className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" onClick={() => handleQuantityAdjust(item.id, item.currentStock, 50)}>
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>

@@ -239,6 +239,37 @@ Greetings! I am the MetalliSense Metallurgical and Production Agent. I can assis
     }
   };
 
+  useEffect(() => {
+    const initData = async () => {
+      try {
+        const runRes = await fetch('/api/smelting/current-run/');
+        if (runRes.ok) {
+          const runData = await runRes.json();
+          if (runData && runData.run_id && runData.status !== 'STANDBY') {
+            const alloyCode = runData.alloy_code || "316L";
+            const weight = runData.melt_weight || 1000;
+            handleSendMessage(`Initialize analysis for active run of ${weight} kg of ${alloyCode}`);
+            return;
+          }
+        }
+        
+        const alloysRes = await fetch('/api/alloys/');
+        if (alloysRes.ok) {
+          const alloysData = await alloysRes.json();
+          const results = alloysData.results || (Array.isArray(alloysData) ? alloysData : []);
+          if (results.length > 0) {
+            const firstAlloy = results[0];
+            const code = firstAlloy.code || "316L";
+            handleSendMessage(`Initialize analysis for default run of 1000 kg of ${code}`);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to initialize recommendation panel from database:", e);
+      }
+    };
+    initData();
+  }, []);
+
   const generatePDFReport = async () => {
     setIsGeneratingPDF(true);
     try {

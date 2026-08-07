@@ -27,54 +27,40 @@ interface AnomalyPattern {
 }
 
 export const AnomalyDetection = () => {
-  const [anomalies, setAnomalies] = useState<Anomaly[]>([
-    {
-      id: '1',
-      type: 'composition',
-      severity: 'high',
-      title: 'Unusual Silicon Volatility',
-      description: 'Silicon readings showing abnormal fluctuation pattern (±0.15% in 5 minutes)',
-      timestamp: new Date(Date.now() - 2 * 60 * 1000),
-      confidence: 94.2,
-      suggestedAction: 'Check stirring system and sampling consistency',
-      affectedElements: ['Si'],
-      status: 'active'
-    },
-    {
-      id: '2',
-      type: 'model',
-      severity: 'medium',
-      title: 'AI Confidence Drift',
-      description: 'Model confidence has decreased by 12% over last hour for carbon predictions',
-      timestamp: new Date(Date.now() - 15 * 60 * 1000),
-      confidence: 87.5,
-      suggestedAction: 'Review recent training data and recalibrate model',
-      affectedElements: ['C'],
-      status: 'investigating'
-    },
-    {
-      id: '3',
-      type: 'process',
-      severity: 'critical',
-      title: 'Temperature Spike Detected',
-      description: 'Furnace temperature exceeded normal range by 45°C for 3 minutes',
-      timestamp: new Date(Date.now() - 8 * 60 * 1000),
-      confidence: 98.7,
-      suggestedAction: 'Immediate furnace inspection required - potential refractory issue',
-      status: 'active'
-    },
-    {
-      id: '4',
-      type: 'equipment',
-      severity: 'low',
-      title: 'Spectrometer Drift',
-      description: 'Minor calibration drift detected in spectrometer readings',
-      timestamp: new Date(Date.now() - 45 * 60 * 1000),
-      confidence: 76.3,
-      suggestedAction: 'Schedule spectrometer recalibration within 24 hours',
-      status: 'resolved'
+  const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadAnomalies = async () => {
+    try {
+      const res = await fetch('/api/anomalies/');
+      if (res.ok) {
+        const data = await res.json();
+        const results = data.results || (Array.isArray(data) ? data : []);
+        const mapped = results.map((item: any) => ({
+          id: item.id,
+          type: item.type || 'process',
+          severity: item.severity || 'medium',
+          title: item.type || 'Anomaly Detected',
+          description: item.description,
+          timestamp: new Date(item.timestamp),
+          confidence: 95.0,
+          suggestedAction: item.recommendation || 'Investigate immediately',
+          status: item.resolved ? 'resolved' : 'active'
+        }));
+        setAnomalies(mapped);
+      }
+    } catch (e) {
+      console.error("Failed to fetch anomalies from PostgreSQL:", e);
+    } finally {
+      setIsLoading(false);
     }
-  ]);
+  };
+
+  useEffect(() => {
+    loadAnomalies();
+    const interval = setInterval(loadAnomalies, 8000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [patterns, setPatterns] = useState<AnomalyPattern[]>([
     {
@@ -99,97 +85,12 @@ export const AnomalyDetection = () => {
 
   const [selectedType, setSelectedType] = useState<string>('all');
 
-  // Simulate real-time anomaly detection
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() < 0.25) { // increased frequency slightly for review/demo purposes
-        const types = ['composition', 'process', 'model', 'equipment'];
-        const selectedType = types[Math.floor(Math.random() * types.length)] as any;
-        const severity = ['low', 'medium', 'high'][Math.floor(Math.random() * 3)] as any;
-        const confidence = Math.round(70 + Math.random() * 30);
-        
-        let title = 'New Anomaly Detected';
-        let description = 'System detected unusual pattern in real-time data';
-        let suggestedAction = 'Investigate immediately';
-        
-        if (selectedType === 'process') {
-          const rand = Math.random();
-          if (rand < 0.33) {
-            title = 'Energy Consumption Spike';
-            description = 'Warning. Energy consumption is significantly above the expected production profile.';
-            suggestedAction = 'Inspect furnace induction coils for electromagnetic leaks.';
-            voiceSafetyService.triggerAlert(
-              title,
-              description,
-              2,
-              confidence,
-              suggestedAction,
-              'Energy'
-            );
-          } else if (rand < 0.66) {
-            title = 'Abnormal Melting Duration';
-            description = 'Melting duration exceeds the predicted process time. Possible furnace efficiency issue detected.';
-            suggestedAction = 'Check coil coupling efficiency and refractory lining wear.';
-            voiceSafetyService.triggerAlert(
-              title,
-              description,
-              2,
-              confidence,
-              suggestedAction,
-              'Process'
-            );
-          } else {
-            title = 'Temperature Spike Detected';
-            description = 'Critical warning. Rapid temperature increase detected. Potential overheating condition. Immediate operator attention is required.';
-            suggestedAction = 'Immediate furnace inspection required - potential refractory issue';
-            voiceSafetyService.triggerAlert(
-              title,
-              description,
-              3,
-              confidence,
-              suggestedAction,
-              'Temperature'
-            );
-          }
-        } else {
-          title = 'Unusual Furnace Behavior';
-          description = `Attention. AI anomaly detection has identified unusual furnace behavior. Confidence level ${confidence} percent. Please inspect the furnace.`;
-          suggestedAction = 'Perform digital twin checklist and verify pressure sensors.';
-          voiceSafetyService.triggerAlert(
-            title,
-            description,
-            2,
-            confidence,
-            suggestedAction,
-            'AI Anomaly'
-          );
-        }
-
-        const newAnomaly: Anomaly = {
-          id: Date.now().toString(),
-          type: selectedType,
-          severity,
-          title,
-          description,
-          timestamp: new Date(),
-          confidence,
-          suggestedAction,
-          status: 'active'
-        };
-        setAnomalies(prev => [newAnomaly, ...prev.slice(0, 9)]);
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Design-system friendly helpers
   const getSeverityVariant = (severity: string): 'default' | 'secondary' | 'destructive' => {
     switch (severity) {
       case 'critical':
         return 'destructive';
       case 'high':
-        return 'default'; // primary
+        return 'default';
       case 'medium':
       case 'low':
       default:

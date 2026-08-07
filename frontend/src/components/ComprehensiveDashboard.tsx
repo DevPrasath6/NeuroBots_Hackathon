@@ -36,14 +36,14 @@ export const ComprehensiveDashboard = () => {
     const [elementDistribution, setElementDistribution] = useState<any[]>([]);
 
     // Furnace utilization state
-    const [furnaces] = useState([
-      { id: "F001", status: "ACTIVE MELTING", load: 92, temp: 1610, color: "text-orange-400 border-orange-500/30" },
-      { id: "F002", status: "CHARGING SEQUENCE", load: 35, temp: 850, color: "text-yellow-400 border-yellow-500/30" },
-      { id: "F003", status: "OFFLINE - MAINT", load: 0, temp: 25, color: "text-slate-500 border-slate-800" }
+    const [furnaces, setFurnaces] = useState([
+      { id: "F001", status: "STANDBY", load: 0, temp: 25, color: "text-slate-500 border-slate-800" },
+      { id: "F002", status: "STANDBY", load: 0, temp: 25, color: "text-slate-500 border-slate-800" },
+      { id: "F003", status: "STANDBY", load: 0, temp: 25, color: "text-slate-500 border-slate-800" }
     ]);
 
     // Active production batch step
-    const [activeBatchStep, setActiveBatchStep] = useState(3); // 0-indexed
+    const [activeBatchStep, setActiveBatchStep] = useState(-1); // -1 = idle
     const steps = [
       { name: "Scrap Load", desc: "Charging metal scrap" },
       { name: "Melting", desc: "Arc induction active" },
@@ -64,9 +64,10 @@ export const ComprehensiveDashboard = () => {
         loadAccuracy();
 
         const fetchData = async () => {
-            const [analyticsData, recentData] = await Promise.all([
+            const [analyticsData, recentData, activeRun] = await Promise.all([
                 dataService.getSystemAnalytics(),
-                dataService.getRecentProcessData(24)
+                dataService.getRecentProcessData(24),
+                dataService.getCurrentSmeltingRun()
             ]);
 
             setAnalytics({
@@ -74,16 +75,20 @@ export const ComprehensiveDashboard = () => {
                 avgConfidence: modelAccuracy?.averageAccuracy || 85.57
             });
 
-            // Generate quality trends
-            const trends = recentData.slice(0, 8).map((reading, index) => ({
-                time: new Date(reading.timestamp).toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                }),
-                quality: reading.quality_score || 85,
-                efficiency: 82 + Math.random() * 12,
-                energy: 40 + Math.random() * 8
-            }));
+            // Generate quality trends from real data, eliminating Math.random
+            const trends = recentData.slice(0, 8).map((reading) => {
+                const powerVal = reading.power || 0;
+                const efficiencyVal = powerVal > 0 ? Math.min(99.5, Math.max(75.0, 95.0 - (reading.energy_consumption * 0.001))) : 0;
+                return {
+                    time: new Date(reading.timestamp).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }),
+                    quality: reading.quality_score || 85.0,
+                    efficiency: parseFloat((efficiencyVal || 87.4).toFixed(1)),
+                    energy: parseFloat((reading.energy_consumption || 0.0).toFixed(1))
+                };
+            });
             setQualityTrends(trends.reverse());
 
             // Generate element distribution
@@ -100,12 +105,54 @@ export const ComprehensiveDashboard = () => {
                 }));
                 setElementDistribution(distribution);
             }
+
+            // Sync furnaces status from real current run database status
+            if (activeRun && activeRun.run_id && activeRun.status !== 'STANDBY') {
+                const statusStr = activeRun.status;
+                const temp = activeRun.temperature || 25;
+                const progress = activeRun.batch_progress || 0;
+
+                let color = "text-slate-500 border-slate-800";
+                if (statusStr === "MELTING" || statusStr === "REFINING" || statusStr === "TAPPING") {
+                    color = "text-orange-400 border-orange-500/30";
+                } else if (statusStr === "PREPARING" || statusStr === "CHARGING") {
+                    color = "text-yellow-400 border-yellow-500/30";
+                }
+
+                setFurnaces([
+                  { id: "F001", status: statusStr, load: Math.round(progress), temp: Math.round(temp), color },
+                  { id: "F002", status: "STANDBY", load: 0, temp: 25, color: "text-slate-500 border-slate-800" },
+                  { id: "F003", status: "STANDBY", load: 0, temp: 25, color: "text-slate-500 border-slate-800" }
+                ]);
+
+                // Map active batch step index
+                let batchStep = -1;
+                if (statusStr === 'PREPARING' || statusStr === 'CHARGING') {
+                    batchStep = 0;
+                } else if (statusStr === 'MELTING') {
+                    batchStep = 1;
+                } else if (statusStr === 'REFINING') {
+                    batchStep = 2;
+                } else if (statusStr === 'READY_TO_TAP') {
+                    batchStep = 3;
+                } else if (statusStr === 'TAPPING' || statusStr === 'COMPLETED') {
+                    batchStep = 4;
+                }
+                setActiveBatchStep(batchStep);
+            } else {
+                setFurnaces([
+                  { id: "F001", status: "STANDBY", load: 0, temp: 25, color: "text-slate-500 border-slate-800" },
+                  { id: "F002", status: "STANDBY", load: 0, temp: 25, color: "text-slate-500 border-slate-800" },
+                  { id: "F003", status: "STANDBY", load: 0, temp: 25, color: "text-slate-500 border-slate-800" }
+                ]);
+                setActiveBatchStep(-1);
+            }
         };
 
         fetchData();
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
-    }, [modelAccuracy?.averageAccuracy]);
+    }, []);
 
     const kpiCards = [
         {
