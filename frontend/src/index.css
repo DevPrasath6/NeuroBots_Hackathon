@@ -1,0 +1,387 @@
+/* Google Fonts Import - Must be first */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Next-Generation Metallurgy Dark Theme Design System */
+
+@layer base {
+  :root {
+    /* Industrial Sci-Fi Dark Palette */
+    --background: 224 25% 4%;
+    --foreground: 215 20% 92%;
+
+    /* Card & Surfaces (Gunmetal Glass) */
+    --card: 222 25% 6%;
+    --card-foreground: 215 20% 92%;
+    --popover: 222 25% 5%;
+    --popover-foreground: 215 20% 92%;
+
+    /* Interactive States (Electric Cyan & Neon Blue) */
+    --primary: 188 100% 50%;
+    --primary-foreground: 224 25% 4%;
+    --secondary: 217.2 32.6% 12%;
+    --secondary-foreground: 210 40% 98%;
+
+    /* Neutral/Muted elements */
+    --muted: 222 25% 9%;
+    --muted-foreground: 215 15% 60%;
+    --accent: 222 25% 10%;
+    --accent-foreground: 210 40% 98%;
+
+    /* Steel gray boundaries */
+    --border: 222 20% 14%;
+    --input: 222 20% 14%;
+    --ring: 188 100% 50%;
+    
+    /* Alerts & Anomalies (Molten Orange) */
+    --destructive: 20 100% 50%;
+    --destructive-foreground: 210 40% 98%;
+
+    --radius: 16px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-inter overflow-x-hidden;
+    background-color: #06080c;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  .font-inter {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  .font-outfit {
+    font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+}
+
+/* Custom Sci-Fi UI Utilities */
+@layer utilities {
+  /* Dark Glassmorphism Surfaces */
+  .glass-card {
+    background: rgba(10, 15, 26, 0.65) !important;
+    backdrop-filter: blur(16px) !important;
+    -webkit-backdrop-filter: blur(16px) !important;
+    border: 1px solid rgba(0, 243, 255, 0.12) !important;
+    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.7), 
+                inset 0 1px 1px rgba(255, 255, 255, 0.03) !important;
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+  }
+
+  .glass-card:hover {
+    border-color: rgba(0, 243, 255, 0.3) !important;
+    box-shadow: 0 15px 45px -10px rgba(0, 243, 255, 0.12),
+                inset 0 1px 2px rgba(255, 255, 255, 0.05) !important;
+    transform: translateY(-2px);
+  }
+
+  .glass-header {
+    background: rgba(6, 8, 12, 0.8) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-b: 1px solid rgba(0, 243, 255, 0.12) !important;
+  }
+
+  /* Futuristic Glass Button with Pulse */
+  .glass-button {
+    background: rgba(0, 243, 255, 0.03) !important;
+    backdrop-filter: blur(4px) !important;
+    border: 1px solid rgba(0, 243, 255, 0.25) !important;
+    color: #e2e8f0 !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  }
+
+  .glass-button:hover {
+    background: rgba(0, 243, 255, 0.12) !important;
+    border-color: #00f3ff !important;
+    box-shadow: 0 0 20px rgba(0, 243, 255, 0.25) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px);
+  }
+
+  .glass-button:active {
+    transform: translateY(1px);
+  }
+
+  /* Steel-Blue Ambient Glows */
+  .glow-cyan {
+    box-shadow: 0 0 30px rgba(0, 243, 255, 0.15);
+  }
+
+  .glow-orange {
+    box-shadow: 0 0 30px rgba(255, 107, 0, 0.15);
+  }
+
+  /* Molten Metal Gradients */
+  .text-gradient {
+    background: linear-gradient(135deg, #00f3ff 0%, #38bdf8 50%, #ff6b00 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+  }
+
+  .text-gradient-molten {
+    background: linear-gradient(135deg, #ff9e00 0%, #ff6b00 50%, #e02424 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+  }
+
+  /* Soft Hover Micro-Lifts */
+  .hover-lift {
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-4px);
+  }
+
+  /* Dynamic Shimmer Border Animation */
+  .shimmer-border {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .shimmer-border::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      to bottom right,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(255, 255, 255, 0) 40%,
+      rgba(0, 243, 255, 0.1) 50%,
+      rgba(255, 255, 255, 0) 60%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    transform: rotate(30deg);
+    transition: transform 0.5s ease;
+    pointer-events: none;
+  }
+
+  .shimmer-border:hover::after {
+    transform: translate(50%, 50%) rotate(30deg);
+  }
+}
+
+/* Custom Scrollbar (Gunmetal theme) */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #06080c;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #1b2535;
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #00f3ff;
+}
+
+/* Mesh Gradient for background depth */
+.gradient-mesh {
+  background-image: 
+    radial-gradient(at 10% 10%, rgba(0, 243, 255, 0.03) 0px, transparent 50%),
+    radial-gradient(at 90% 10%, rgba(255, 107, 0, 0.02) 0px, transparent 50%),
+    radial-gradient(at 50% 80%, rgba(56, 189, 248, 0.03) 0px, transparent 50%);
+  background-attachment: fixed;
+}
+
+/* Global Shadow / Card Overrides for Glassmorphic Glow */
+.border, [class*="border-"] {
+  border-color: rgba(56, 189, 248, 0.15) !important;
+}
+
+.bg-card {
+  background: rgba(10, 15, 26, 0.65) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(0, 243, 255, 0.15) !important;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.8), 
+              inset 0 1px 1px rgba(255, 255, 255, 0.04) !important;
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+
+.bg-card:hover {
+  border-color: rgba(0, 243, 255, 0.35) !important;
+  box-shadow: 0 15px 45px -10px rgba(0, 243, 255, 0.15),
+              inset 0 1px 2px rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Shimmer animations on Card borders */
+.bg-card {
+  position: relative;
+}
+
+/* Global Button Refactoring */
+.bg-primary {
+  background: linear-gradient(135deg, #00f3ff 0%, #0284c7 100%) !important;
+  color: #06080c !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.025em !important;
+  box-shadow: 0 4px 15px rgba(0, 243, 255, 0.25) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border: none !important;
+}
+
+.bg-primary:hover {
+  opacity: 0.95 !important;
+  box-shadow: 0 0 25px rgba(0, 243, 255, 0.55) !important;
+  transform: translateY(-1.5px) !important;
+}
+
+.bg-primary:active {
+  transform: translateY(0.5px) !important;
+}
+
+.bg-secondary {
+  background: rgba(56, 189, 248, 0.05) !important;
+  border: 1px solid rgba(56, 189, 248, 0.2) !important;
+  color: #e2e8f0 !important;
+  transition: all 0.3s ease !important;
+}
+
+.bg-secondary:hover {
+  background: rgba(56, 189, 248, 0.1) !important;
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  color: #ffffff !important;
+}
+
+/* Inputs and Forms Overrides */
+input[type="text"], input[type="number"], select, textarea, .bg-input {
+  background: rgba(6, 8, 12, 0.75) !important;
+  border: 1px solid rgba(56, 189, 248, 0.2) !important;
+  color: #f1f5f9 !important;
+  border-radius: 10px !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+  border-color: #00f3ff !important;
+  box-shadow: 0 0 15px rgba(0, 243, 255, 0.3), inset 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+  outline: none !important;
+}
+
+/* Table Style Overrides */
+table {
+  border-collapse: separate !important;
+  border-spacing: 0 6px !important;
+}
+
+table th {
+  background: rgba(10, 15, 26, 0.9) !important;
+  color: #00f3ff !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  border-bottom: 2px solid rgba(0, 243, 255, 0.25) !important;
+  padding: 14px 16px !important;
+  font-weight: 600 !important;
+}
+
+table td {
+  background: rgba(10, 15, 26, 0.4) !important;
+  padding: 14px 16px !important;
+  border-top: 1px solid rgba(56, 189, 248, 0.08) !important;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.08) !important;
+  font-size: 13px !important;
+  color: #cbd5e1 !important;
+}
+
+table td:first-child {
+  border-left: 1px solid rgba(56, 189, 248, 0.08) !important;
+  border-top-left-radius: 8px !important;
+  border-bottom-left-radius: 8px !important;
+}
+
+table td:last-child {
+  border-right: 1px solid rgba(56, 189, 248, 0.08) !important;
+  border-top-right-radius: 8px !important;
+  border-bottom-right-radius: 8px !important;
+}
+
+table tr:hover td {
+  background: rgba(0, 243, 255, 0.05) !important;
+  border-color: rgba(0, 243, 255, 0.2) !important;
+  color: #ffffff !important;
+  transition: all 0.2s ease !important;
+}
+
+/* Force light-mode backgrounds to render dark glassmorphic in our refactored layout */
+.min-h-screen {
+  background: transparent !important;
+}
+
+.bg-white, .bg-background {
+  background-color: rgba(10, 15, 26, 0.65) !important;
+}
+
+.bg-slate-50 {
+  background-color: rgba(6, 8, 12, 0.45) !important;
+  border-color: rgba(56, 189, 248, 0.1) !important;
+}
+
+.bg-slate-100, .bg-gray-100, .bg-gray-200 {
+  background-color: rgba(4, 6, 10, 0.8) !important;
+}
+
+.border-slate-200, .border-slate-300, .border-subtle, .border-gray-200, .border-gray-300, .border-stone-300 {
+  border-color: rgba(56, 189, 248, 0.15) !important;
+}
+
+/* Force standard outline/back buttons to render glassmorphic and styled */
+.border-stone-300.text-stone-600, .border-gray-300.text-gray-600 {
+  background: rgba(0, 243, 255, 0.03) !important;
+  border: 1px solid rgba(0, 243, 255, 0.25) !important;
+  color: #e2e8f0 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.border-stone-300.text-stone-600:hover, .border-gray-300.text-gray-600:hover {
+  background: rgba(0, 243, 255, 0.12) !important;
+  border-color: #00f3ff !important;
+  box-shadow: 0 0 20px rgba(0, 243, 255, 0.25) !important;
+  color: #ffffff !important;
+}
+
+/* Text color overrides for high-contrast dark theme */
+.text-slate-900, .text-gray-900, .text-slate-800, .text-gray-800, .text-stone-900, .text-stone-800 {
+  color: #f1f5f9 !important;
+}
+
+.text-slate-700, .text-gray-700, .text-slate-600, .text-gray-600, .text-stone-700, .text-stone-600 {
+  color: #cbd5e1 !important;
+}
+
+.text-muted-foreground {
+  color: #94a3b8 !important;
+}
+
+
+
+

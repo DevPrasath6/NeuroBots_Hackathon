@@ -1,0 +1,14 @@
+
+================================================================================
+AI-DRIVEN ALLOY ADDITION SYSTEM - MODEL TRAINING
+================================================================================
+Traceback (most recent call last):
+  File "G:\CMSCET\backend\ml_models\train_model.py", line 559, in <module>
+    success = train_models()
+  File "G:\CMSCET\backend\ml_models\train_model.py", line 196, in train_models
+    X, y_material, y_quantity, y_quality = load_and_prepare_data()
+  File "G:\CMSCET\backend\ml_models\train_model.py", line 30, in load_and_prepare_data
+    print("\U0001f4ca Loading Alloys dataset...")
+  File "C:\Users\91934\AppData\Local\Programs\Python\Python310\lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f4ca' in position 0: character maps to <undefined>
