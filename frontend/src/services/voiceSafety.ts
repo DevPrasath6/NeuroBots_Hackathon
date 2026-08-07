@@ -258,39 +258,30 @@ class VoiceSafetyService {
   public speak(text: string, priority: 1 | 2 | 3, duplicateKey?: string) {
     const key = duplicateKey || text;
     
-    // Strict allowed voice events check
-    const ALLOWED_VOICE_EVENTS = [
-      "Batch Started",
-      "Heating Started",
-      "Critical Temperature",
-      "Power Overload",
-      "Composition Outside Specification",
-      "Spectrometer Validation Passed",
-      "Ready To Tap",
-      "Tapping Started",
-      "Batch Completed",
-      "Report Ready"
-    ];
+    // Check if resolution or anomaly
+    const isResolution = text.toLowerCase().includes("restored") ||
+                         text.toLowerCase().includes("resolved") ||
+                         text.toLowerCase().includes("returned") ||
+                         text.toLowerCase().includes("normal") ||
+                         text.toLowerCase().includes("continue");
+    
+    const isAnomaly = priority >= 2;
 
-    const isAllowedEvent = ALLOWED_VOICE_EVENTS.includes(key);
-
-    if (!isAllowedEvent) {
-      // Show visual toast popup but DO NOT play audio!
-      toast({
-        title: priority === 3 ? "Critical Alert" : priority === 2 ? "System Warning" : "AI Advisor",
-        description: text,
-        variant: priority === 3 ? "destructive" : "default",
-      });
+    if (!isAnomaly && !isResolution) {
+      // Remain completely silent during normal operations
       return;
     }
 
     if (!this.settings.enabled) {
-      toast({
-        title: priority === 3 ? "Critical AI Voice Alert" : priority === 2 ? "Warning AI Voice Alert" : "AI Voice Assistant",
-        description: text,
-        variant: priority === 3 ? "destructive" : "default",
-      });
       return;
+    }
+
+    // Limit voice alerts to maximum of 2 per batch
+    if (this.anomalyVoiceCount >= 2) {
+      // Only allow completely new priority 3 critical alerts to pass through
+      if (priority !== 3 || this.spokenKeys.has(key)) {
+        return;
+      }
     }
 
     // Prevent speaking duplicate keys in the current cycle
@@ -298,29 +289,22 @@ class VoiceSafetyService {
       return;
     }
 
-    // Limit anomaly warnings (priority 2)
-    if (priority === 2) {
-      if (this.anomalyVoiceCount >= 2) {
-        return;
-      }
-      this.anomalyVoiceCount++;
-    }
-
     this.spokenKeys.add(key);
+    this.anomalyVoiceCount++;
 
     const now = Date.now();
     let cooldown = 15000; // default 15s
 
     // Set custom cooldown periods
     if (key.includes("Overheating") || key.includes("Temperature")) {
-      cooldown = 45000; // High Temperature repeats only every 45 seconds
+      cooldown = 45000;
     } else if (key.includes("Deviation") || key.includes("Spectrometer")) {
-      cooldown = 60000; // Spectrometer deviation repeats only every 60 seconds
+      cooldown = 60000;
     } else if (key.includes("Inventory") || key.includes("Shortage")) {
-      cooldown = 1800000; // Inventory alert speaks only once (30 min cooldown)
+      cooldown = 1800000;
     }
 
-    // Deduplication cooldown check for all alerts to prevent spamming
+    // Deduplication cooldown check
     if (priority !== 3) {
       const last = this.lastSpokenTime.get(key) || 0;
       if (now - last < cooldown) {
@@ -334,11 +318,9 @@ class VoiceSafetyService {
       if (window.speechSynthesis) window.speechSynthesis.cancel();
       this.activeUtterance = null;
       this.activePriority = 0;
-      // Filter out low priority elements from queue
       this.queue = this.queue.filter(q => q.priority === 3);
       this.speakUtterance(text, priority);
     } else {
-      // Level 1 or 2 queued
       this.queue.push({ text, priority, duplicateKey });
       this.processQueue();
     }
@@ -353,50 +335,37 @@ class VoiceSafetyService {
       return;
     }
 
-    // Sort queue dynamically (Level 2 prioritized over Level 1)
-    this.queue.sort((a, b) => b.priority - a.priority);
-
     const next = this.queue.shift();
     if (next) {
       this.speakUtterance(next.text, next.priority);
     }
   }
 
-  private speakUtterance(rawText: string, priority: 1 | 2 | 3) {
-    // English Only strictly enforced
-    let text = replaceNumbersWithWords(rawText);
-
-    // Trigger visual toast pop-up for ALL text-to-speech results
-    toast({
-      title: priority === 3 ? "Critical AI Voice Alert" : priority === 2 ? "Warning AI Voice Alert" : "AI Voice Assistant",
-      description: rawText,
-      variant: priority === 3 ? "destructive" : "default",
-    });
-
+  private speakUtterance(text: string, priority: number) {
     if (!window.speechSynthesis) return;
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    // Filter text block: strictly English text output
+    const rawText = text.replace(/[^\x00-\x7F]/g, "").trim();
+    if (!rawText) return;
+
+    const utterance = new SpeechSynthesisUtterance(rawText);
     utterance.volume = this.settings.volume;
     utterance.rate = this.settings.rate;
-    // Always use English lang voice mapping
-    utterance.lang = this.settings.lang.startsWith('en') ? this.settings.lang : 'en-US';
+    utterance.pitch = 1.0;
 
-    // Apply voice selection
     const voices = window.speechSynthesis.getVoices();
     let selectedVoice = null;
 
-    const accentLower = this.settings.accent.toLowerCase();
-    let candidateVoices = voices.filter(v => v.lang.toLowerCase().includes(accentLower));
-    
-    if (candidateVoices.length === 0) {
-      candidateVoices = voices.filter(v => v.lang.toLowerCase().startsWith('en'));
-    }
+    const accentKeywords = this.settings.accent ? [this.settings.accent.toLowerCase()] : ['en-us', 'en-gb', 'google US English', 'microsoft zira'];
+    const genderKeywords = this.settings.gender === 'female' ? ['female', 'zira', 'hazel', 'susan', 'heera'] : ['male', 'david', 'mark', 'george', 'ravi'];
 
-    const genderKeywords = this.settings.gender === 'female' 
-      ? ['female', 'zira', 'samantha', 'hazel', 'google', 'microsoft', 'anna', 'melina', 'elena'] 
-      : ['male', 'david', 'mark', 'ravi', 'george', 'sean', 'stefan', 'daniel'];
+    // Select suitable matching synthesized voice
+    selectedVoice = voices.find(v => 
+      accentKeywords.some(keyword => v.name.toLowerCase().includes(keyword) || v.lang.toLowerCase().includes(keyword)) &&
+      genderKeywords.some(keyword => v.name.toLowerCase().includes(keyword))
+    );
 
-    selectedVoice = candidateVoices.find(v => 
+    const candidateVoices = voices.filter(v => 
       genderKeywords.some(keyword => v.name.toLowerCase().includes(keyword))
     );
 
@@ -429,9 +398,7 @@ class VoiceSafetyService {
       this.processQueue();
     };
 
-    // Log the voice output to the PostgreSQL Database
     this.logVoiceActivity(rawText, priority);
-
     window.speechSynthesis.speak(utterance);
   }
 
@@ -445,28 +412,40 @@ class VoiceSafetyService {
     category: string = "Safety",
     val?: number
   ) {
-    // Check if duplicate alert already exists
+    // Only trigger alerts and visual popups for anomalies or resolution events
+    const isResolution = title.toLowerCase().includes("resolved") || 
+                         title.toLowerCase().includes("restored") || 
+                         title.toLowerCase().includes("normal") ||
+                         message.toLowerCase().includes("resolved") ||
+                         message.toLowerCase().includes("restored") ||
+                         message.toLowerCase().includes("normal") ||
+                         message.toLowerCase().includes("returned") ||
+                         message.toLowerCase().includes("continue");
+    
+    const isAnomaly = priority >= 2;
+
+    if (!isAnomaly && !isResolution) {
+      // Silence normal workflow triggers completely: no voice, no popup, no announcements, no DB log
+      return;
+    }
+
     const existingIndex = this.alerts.findIndex(a => a.title === title && a.status !== 'resolved' && a.status !== 'closed');
     if (existingIndex !== -1) {
       const existing = this.alerts[existingIndex];
       
-      // Hysteresis/value check
       if (val !== undefined && existing.val !== undefined) {
         const diff = Math.abs(val - existing.val);
         if (title.includes("Overheating") || title.includes("Temperature")) {
-          // Hysteresis of 20 degrees Celsius for temperature anomalies
           if (diff < 20) {
-            return; // Skip: inside hysteresis range
+            return;
           }
         } else if (diff < 0.05) {
-          return; // Skip minor composition fluctuation
+          return;
         }
       } else {
-        // Active alert already exists without changing value, skip creating new
         return;
       }
 
-      // If we didn't return, update the existing alert message
       existing.message = message;
       existing.val = val;
       existing.timestamp = new Date();
@@ -490,11 +469,9 @@ class VoiceSafetyService {
       val
     };
 
-    // Prepend new alert
     this.alerts = [newAlert, ...this.alerts];
     this.notifyAlerts();
 
-    // Log alert to DB anomalies table
     const severityMap: Record<number, 'low' | 'medium' | 'high' | 'critical'> = {
       1: 'low',
       2: 'medium',
@@ -507,17 +484,15 @@ class VoiceSafetyService {
       source: 'Voice Safety AI'
     });
 
-    // Speak initial notification (English Only)
     const alertPrefix = priority === 3 ? "Critical warning. " : (priority === 2 ? "Warning. " : "");
     this.speak(`${alertPrefix}${message}`, priority, title);
 
-    // Setup repetition for Level 3 Critical alerts until acknowledged or resolved
     if (priority === 3) {
-      let repeatTime = this.settings.repeatInterval; // default (e.g. 15s)
+      let repeatTime = this.settings.repeatInterval;
       if (title.includes("Overheating") || title.includes("Temperature")) {
-        repeatTime = 60; // repeat temperature alerts only every 60 seconds
+        repeatTime = 60;
       } else if (title.includes("Deviation") || title.includes("Spectrometer")) {
-        repeatTime = 90; // repeat spectrometer alerts only every 90 seconds
+        repeatTime = 90;
       }
 
       const intervalId = setInterval(() => {
@@ -537,7 +512,6 @@ class VoiceSafetyService {
 
     this.alerts = this.alerts.map(alert => {
       if (alert.title === title && alert.status !== 'resolved' && alert.status !== 'closed') {
-        // Clear repeat interval
         const intervalId = this.repeatIntervals.get(alert.id);
         if (intervalId) {
           clearInterval(intervalId);
@@ -556,10 +530,21 @@ class VoiceSafetyService {
     });
 
     if (resolvedAny) {
-      if (title.includes("Overheating") || title.includes("Temperature")) {
-        this.speak("Temperature has returned to the normal operating range.", 1, "temp_normal");
+      // Stop safety speech immediately and clear speech queues
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      this.activeUtterance = null;
+      this.activePriority = 0;
+      this.queue = [];
+
+      // Output specific resolution text
+      if (title.toLowerCase().includes("overheating") || title.toLowerCase().includes("temperature")) {
+        this.speak("Temperature restored. Production may continue.", 1, "temp_normal");
+      } else if (title.toLowerCase().includes("composition")) {
+        this.speak("Composition restored. Production may continue.", 1, "comp_normal");
       } else {
-        this.speak(`${title} has been resolved.`, 1, `${title}_resolved`);
+        this.speak(`${title} resolved. Production may continue.`, 1, `${title}_resolved`);
       }
       this.notifyAlerts();
     }
@@ -569,7 +554,6 @@ class VoiceSafetyService {
   public acknowledgeAlert(id: string) {
     this.alerts = this.alerts.map(alert => {
       if (alert.id === id) {
-        // Clear interval
         const intervalId = this.repeatIntervals.get(id);
         if (intervalId) {
           clearInterval(intervalId);
@@ -588,7 +572,6 @@ class VoiceSafetyService {
   }
 
   public getActiveAlerts(): SafetyAlert[] {
-    // Only display alerts that are active, new, or unacknowledged critical alerts. Ignore resolved/closed alerts.
     return this.alerts.filter(a => a.status === 'new' || a.status === 'active' || (a.priority === 3 && !a.acknowledged));
   }
 }
