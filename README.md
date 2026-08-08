@@ -143,3 +143,30 @@ MetalliSense governs furnace runs via a strict, database-driven finite state mac
      gunicorn alloy_backend.wsgi:application
      ```
   6. Add the environment variable `DATABASE_URL` pointing to your Render PostgreSQL connection string.
+
+---
+
+## 🛠️ Resolved Issues & Fixes (Deployed & Verified)
+
+The application has been fully secured, debugged, and successfully deployed to **Vercel** and **Render** with the following corrections:
+
+### 1. Content Security Policy (CSP) Configuration
+- **Issue**: Chrome console reported CSP violations blocking browser extensions due to strict `script-src` rules.
+- **Correction**: Configured robust CSP headers in `vercel.json` and `nginx.conf`, and added a fallback `<meta>` tag in `index.html`. The policy enforces strict origin limits while permitting `'unsafe-eval'` to guarantee compatibility with necessary browser extensions.
+
+### 2. Stuck Loading Screen Fix
+- **Issue**: The dashboard got stuck on *"Ingesting alloys catalog..."* if the Render database container was waking up from standby, because the catalog was only fetched once on mount.
+- **Correction**: Re-programmed `Dashboard.tsx` to recursively retry fetching the alloys catalog every 3 seconds if the initial request fails, ensuring the screen automatically loads as soon as the database spin-up finishes.
+
+### 3. CDN & API Cache Prevention
+- **Issue**: Intermediate CDN edges (Vercel) and browsers cached GET requests, returning empty `304 Not Modified` bodies that broke JSON parsing loops for FSM synchronization.
+- **Correction**: 
+  - Appended cache-busting timestamp parameters (`?_=${Date.now()}`) to all polling fetch endpoints.
+  - Implemented a custom Django middleware `DisableCacheMiddleware` inside `alloy_api` to strip caching headers at the source.
+  - Updated Nginx and Vercel configurations to enforce `Cache-Control: no-store` on all `/api/` paths.
+
+### 4. Dependency Resolution (Render Build Failures)
+- **Issue**: Render builds failed due to a version conflict between `scikit-learn 1.9.0` (which requires `joblib>=1.4.0`) and a pinned `joblib==1.3.2` requirement.
+- **Correction**: Adjusted `backend/requirements.txt` to loosen `joblib>=1.4.0` and bump `scikit-learn>=1.9.0` to match the exact pickling versions used for the ML prediction models, resulting in clean deployment builds.
+
+The project is fully operational and live on production!
