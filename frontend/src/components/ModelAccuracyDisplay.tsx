@@ -39,13 +39,24 @@ export const ModelAccuracyDisplay = () => {
     const loadRegistry = () => {
         setRegistryLoading(true);
         fetch('/api/model-registry/')
-            .then(res => res.json())
+            .then(res => {
+                return res.text().then(text => {
+                    const isHtml = text.trim().startsWith('<') || text.trim().startsWith('<!');
+                    if (isHtml || res.status === 503 || res.status === 502) {
+                        window.dispatchEvent(new CustomEvent('backend-waking-up'));
+                        throw new Error('BACKEND_WAKING_UP');
+                    }
+                    return JSON.parse(text);
+                });
+            })
             .then(data => {
                 setRegistryItems(data.results || (Array.isArray(data) ? data : []));
                 setRegistryLoading(false);
             })
             .catch(err => {
-                console.error("Error loading model registry:", err);
+                if (err && err.message !== 'BACKEND_WAKING_UP') {
+                    console.error("Error loading model registry:", err);
+                }
                 setRegistryItems([]);
                 setRegistryLoading(false);
             });

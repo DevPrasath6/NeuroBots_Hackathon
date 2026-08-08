@@ -78,7 +78,11 @@ const Index = () => {
                     modelStatus: data.model_status || 'PRODUCTION READY'
                 });
             })
-            .catch(err => console.warn('Error fetching landing stats:', err));
+            .catch(err => {
+                if (err && err.message !== 'BACKEND_WAKING_UP') {
+                    console.warn('Error fetching landing stats:', err);
+                }
+            });
     }, []);
 
     const features = [

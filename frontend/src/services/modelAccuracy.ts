@@ -31,7 +31,14 @@ export async function getModelAccuracy(): Promise<ModelAccuracy> {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json();
+    const text = await response.text();
+    const isHtml = text.trim().startsWith('<') || text.trim().startsWith('<!');
+    if (isHtml || response.status === 503 || response.status === 502) {
+      window.dispatchEvent(new CustomEvent('backend-waking-up'));
+      throw new Error('BACKEND_WAKING_UP');
+    }
+
+    const data = JSON.parse(text);
     return {
       materialClassifierAccuracy: data.material_classifier.accuracy,
       quantityRegressorR2: data.quantity_regressor.r2_score,
@@ -42,8 +49,10 @@ export async function getModelAccuracy(): Promise<ModelAccuracy> {
       modelVersion: '3.0',
       trainedAt: data.material_classifier.last_trained,
     };
-  } catch (error) {
-    console.warn('Failed to fetch from API, returning database estimation fallbacks:', error);
+  } catch (error: any) {
+    if (error && error.message !== 'BACKEND_WAKING_UP') {
+      console.warn('Failed to fetch from API, returning database estimation fallbacks:', error);
+    }
     return {
       materialClassifierAccuracy: 95.07,
       quantityRegressorR2: 99.82,
