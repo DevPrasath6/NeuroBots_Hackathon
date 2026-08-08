@@ -138,8 +138,10 @@ export const Dashboard = () => {
             setCurrentStep(0);
           }
         }
-      } catch (e) {
-        console.error("Failed to sync backend run FSM:", e);
+      } catch (e: any) {
+        if (e && e.message !== 'BACKEND_WAKING_UP') {
+          console.error("Failed to sync backend run FSM:", e);
+        }
       }
     };
 
@@ -214,7 +216,11 @@ export const Dashboard = () => {
           setSelectedAlloy(mapped[0]);
         }
       })
-      .catch(err => console.error("Error loading alloys catalog from DB:", err));
+      .catch(err => {
+        if (err && err.message !== 'BACKEND_WAKING_UP') {
+          console.error("Error loading alloys catalog from DB:", err);
+        }
+      });
   }, []);
 
   const filteredAlloys = alloysList.filter(alloy => 
