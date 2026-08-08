@@ -20,14 +20,20 @@ import { AlertPanel } from '@/components/AlertPanel';
 import jsPDF from 'jspdf';
 import { dataService } from '@/services/dataService';
 import { voiceSafetyService, SafetyAlert } from '@/services/voiceSafety';
-
 const safeJson = async (res: Response) => {
-  const contentType = res.headers.get("content-type") || "";
-  if (contentType.includes("text/html") || res.status === 503 || res.status === 502) {
+  const text = await res.text();
+  const isHtml = text.trim().startsWith('<') || text.trim().startsWith('<!');
+  
+  if (isHtml || res.status === 503 || res.status === 502) {
     window.dispatchEvent(new CustomEvent('backend-waking-up'));
     throw new Error('BACKEND_WAKING_UP');
   }
-  return res.json();
+  
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    throw new Error('INVALID_JSON_RESPONSE');
+  }
 };
 
 export const Dashboard = () => {

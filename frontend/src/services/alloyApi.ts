@@ -27,9 +27,10 @@ class AlloyAPI {
       },
       ...options,
     });
+    const text = await response.text();
+    const isHtml = text.trim().startsWith('<') || text.trim().startsWith('<!');
 
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('text/html') || response.status === 503 || response.status === 502) {
+    if (isHtml || response.status === 503 || response.status === 502) {
       window.dispatchEvent(new CustomEvent('backend-waking-up'));
       throw new Error('BACKEND_WAKING_UP');
     }
@@ -39,7 +40,7 @@ class AlloyAPI {
     }
 
     try {
-      return await response.json();
+      return JSON.parse(text);
     } catch (e) {
       throw new Error('INVALID_JSON_RESPONSE');
     }

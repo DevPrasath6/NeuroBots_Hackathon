@@ -14,12 +14,19 @@ export const HistoricalData = () => {
   const loadData = () => {
     setIsLoading(true);
     const checkRes = async (r: Response) => {
-      const contentType = r.headers.get("content-type") || "";
-      if (contentType.includes("text/html") || r.status === 503 || r.status === 502) {
+      const text = await r.text();
+      const isHtml = text.trim().startsWith('<') || text.trim().startsWith('<!');
+      
+      if (isHtml || r.status === 503 || r.status === 502) {
         window.dispatchEvent(new CustomEvent('backend-waking-up'));
         throw new Error('BACKEND_WAKING_UP');
       }
-      return r.json();
+      
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        throw new Error('INVALID_JSON_RESPONSE');
+      }
     };
 
     Promise.all([
