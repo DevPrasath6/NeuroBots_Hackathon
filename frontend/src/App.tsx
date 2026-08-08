@@ -20,36 +20,53 @@ import History from "./pages/History";
 import Documentation from "./pages/Documentation";
 import FeaturesPage from "./pages/Features";
 
+import { useEffect } from "react";
+import { toast } from "sonner";
+
 const queryClient = new QueryClient();
 
-const App = () => (
-    <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <MoltenBackground />
+const App = () => {
+    useEffect(() => {
+        const handleWakingUp = () => {
+            toast.warning("AI Backend Waking Up...", {
+                description: "The Render database and web services are spinning up from standby. This takes about 60 seconds on the Free Tier. Please wait...",
+                duration: 8000,
+                id: "backend-waking-up-toast"
+            });
+        };
+        window.addEventListener('backend-waking-up', handleWakingUp);
+        return () => window.removeEventListener('backend-waking-up', handleWakingUp);
+    }, []);
 
-            <BrowserRouter>
-                <Routes>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/recommendations" element={<Recommendations />} />
-                    <Route path="/analytics" element={<Analytics />} />
-                    <Route path="/alerts" element={<Alerts />} />
-                    <Route path="/inventory" element={<Inventory />} />
-                    <Route path="/predictive" element={<Predictive />} />
-                    <Route path="/furnace" element={<Furnace />} />
-                    <Route path="/anomaly" element={<Anomaly />} />
-                    <Route path="/quality" element={<Quality />} />
-                    <Route path="/history" element={<History />} />
-                    <Route path="/documentation" element={<Documentation />} />
-                    <Route path="/features" element={<FeaturesPage />} />
-                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                    <Route path="*" element={<NotFound />} />
-                </Routes>
-            </BrowserRouter>
-        </TooltipProvider>
-    </QueryClientProvider>
-);
+    return (
+        <QueryClientProvider client={queryClient}>
+            <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <MoltenBackground />
+
+                <BrowserRouter>
+                    <Routes>
+                        <Route path="/" element={<Index />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/recommendations" element={<Recommendations />} />
+                        <Route path="/analytics" element={<Analytics />} />
+                        <Route path="/alerts" element={<Alerts />} />
+                        <Route path="/inventory" element={<Inventory />} />
+                        <Route path="/predictive" element={<Predictive />} />
+                        <Route path="/furnace" element={<Furnace />} />
+                        <Route path="/anomaly" element={<Anomaly />} />
+                        <Route path="/quality" element={<Quality />} />
+                        <Route path="/history" element={<History />} />
+                        <Route path="/documentation" element={<Documentation />} />
+                        <Route path="/features" element={<FeaturesPage />} />
+                        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                        <Route path="*" element={<NotFound />} />
+                    </Routes>
+                </BrowserRouter>
+            </TooltipProvider>
+        </QueryClientProvider>
+    );
+};
 
 export default App;

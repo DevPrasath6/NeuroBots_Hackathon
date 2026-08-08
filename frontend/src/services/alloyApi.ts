@@ -28,11 +28,21 @@ class AlloyAPI {
       ...options,
     });
 
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('text/html') || response.status === 503 || response.status === 502) {
+      window.dispatchEvent(new CustomEvent('backend-waking-up'));
+      throw new Error('BACKEND_WAKING_UP');
+    }
+
     if (!response.ok) {
       throw new Error(`API request failed: ${response.statusText}`);
     }
 
-    return response.json();
+    try {
+      return await response.json();
+    } catch (e) {
+      throw new Error('INVALID_JSON_RESPONSE');
+    }
   }
 
   async generateRecommendations(data: RecommendationRequest) {

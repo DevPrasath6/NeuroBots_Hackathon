@@ -52,13 +52,30 @@ export interface Alert {
   resolved_at?: Date;
 }
 
+async function safeParseJson(response: Response): Promise<any> {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('text/html') || response.status === 503 || response.status === 502) {
+    window.dispatchEvent(new CustomEvent('backend-waking-up'));
+    throw new Error('BACKEND_WAKING_UP');
+  }
+  
+  if (!response.ok) {
+    throw new Error(`API request failed with status: ${response.status}`);
+  }
+
+  try {
+    return await response.json();
+  } catch (e) {
+    throw new Error('INVALID_JSON_RESPONSE');
+  }
+}
+
 class DataService {
   // Process Data Management
   async getRecentProcessData(hours: number = 24): Promise<ProcessReading[]> {
     try {
       const res = await fetch('/api/readings/');
-      if (!res.ok) throw new Error('Network response error');
-      const data = await res.json();
+      const data = await safeParseJson(res);
       const results = data.results || (Array.isArray(data) ? data : []);
       return results.map((r: any) => ({
         id: r.id,
@@ -103,7 +120,7 @@ class DataService {
   async getRecommendations(): Promise<AlloyRecommendation[]> {
     try {
       const res = await fetch('/api/quality-reports/');
-      const data = await res.json();
+      const data = await safeParseJson(res);
       const results = data.results || (Array.isArray(data) ? data : []);
       return results.map((r: any) => ({
         id: r.id,
@@ -139,8 +156,7 @@ class DataService {
   async getActiveAlerts(): Promise<Alert[]> {
     try {
       const res = await fetch('/api/anomalies/');
-      if (!res.ok) throw new Error('Network response error');
-      const data = await res.json();
+      const data = await safeParseJson(res);
       const results = data.results || (Array.isArray(data) ? data : []);
       return results.map((a: any) => ({
         id: a.id,
@@ -161,7 +177,7 @@ class DataService {
     try {
       const res = await fetch('/api/batches/');
       if (res.ok) {
-        const data = await res.json();
+        const data = await safeParseJson(res);
         const results = data.results || (Array.isArray(data) ? data : []);
         if (results.length > 0) {
           // Return the ID of the most recently created batch
@@ -228,8 +244,8 @@ class DataService {
         fetch('/api/dashboard/metrics/'),
         fetch('/api/charts/process-analytics/')
       ]);
-      const metrics = await metricsRes.json();
-      const analytics = await analyticsRes.json();
+      const metrics = await safeParseJson(metricsRes);
+      const analytics = await safeParseJson(analyticsRes);
 
       const totalReadings = metrics.recent_activity ? metrics.recent_activity.length : 10;
       const avgQuality = parseFloat(metrics.production_efficiency || '95.0');
@@ -266,8 +282,7 @@ class DataService {
   async getCurrentSmeltingRun(): Promise<SmeltingRun> {
     try {
       const res = await fetch('/api/smelting/current-run/');
-      if (!res.ok) throw new Error('Network response error');
-      return await res.json();
+      return await safeParseJson(res);
     } catch (err) {
       console.error('Error fetching current smelting run:', err);
       return {
@@ -295,7 +310,7 @@ class DataService {
         body: JSON.stringify({ alloy_code: alloyCode, batch_weight: batchWeight, batch_id: batchId, weight_unit: weightUnit || 'kg' })
       });
       if (!res.ok) throw new Error('Failed to start run');
-      return await res.json();
+      return await safeParseJson(res);
     } catch (err) {
       console.error('Error starting smelting run:', err);
       return null;
@@ -310,7 +325,7 @@ class DataService {
         body: JSON.stringify(data)
       });
       if (!res.ok) throw new Error('Failed to update run');
-      return await res.json();
+      return await safeParseJson(res);
     } catch (err) {
       console.error('Error updating smelting run:', err);
       return null;
