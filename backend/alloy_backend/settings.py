@@ -57,17 +57,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'alloy_backend.wsgi.application'
 
+import dj_database_url
+
 # Database Configuration
-# Use PostgreSQL completely
+# Use PostgreSQL completely, falling back to local configurations
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'metallisense'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'postgres'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
-    }
+    'default': dj_database_url.config(
+        default=f"postgresql://{os.getenv('DB_USER', 'postgres')}:{os.getenv('DB_PASSWORD', 'postgres')}@{os.getenv('DB_HOST', 'localhost')}:{os.getenv('DB_PORT', '5432')}/{os.getenv('DB_NAME', 'metallisense')}"
+    )
 }
 
 # CORS Configuration
@@ -83,7 +80,7 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only for development
+CORS_ALLOW_ALL_ORIGINS = True
 
 # REST Framework Configuration
 REST_FRAMEWORK = {
