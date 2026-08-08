@@ -13,10 +13,19 @@ export const HistoricalData = () => {
 
   const loadData = () => {
     setIsLoading(true);
+    const checkRes = async (r: Response) => {
+      const contentType = r.headers.get("content-type") || "";
+      if (contentType.includes("text/html") || r.status === 503 || r.status === 502) {
+        window.dispatchEvent(new CustomEvent('backend-waking-up'));
+        throw new Error('BACKEND_WAKING_UP');
+      }
+      return r.json();
+    };
+
     Promise.all([
-      fetch('/api/charts/production-trends/').then(r => r.json()),
-      fetch('/api/charts/material-usage/').then(r => r.json()),
-      fetch('/api/batches/').then(r => r.json())
+      fetch('/api/charts/production-trends/').then(r => checkRes(r)),
+      fetch('/api/charts/material-usage/').then(r => checkRes(r)),
+      fetch('/api/batches/').then(r => checkRes(r))
     ])
     .then(([trends, usage, batchesData]) => {
       setAccuracyData(trends);

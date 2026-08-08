@@ -55,10 +55,16 @@ const Index = () => {
         };
         requestAnimationFrame(animate);
     };
-
     useEffect(() => {
         fetch('/api/landing/stats/')
-            .then(res => res.json())
+            .then(res => {
+                const contentType = res.headers.get("content-type") || "";
+                if (contentType.includes("text/html") || res.status === 503 || res.status === 502) {
+                    window.dispatchEvent(new CustomEvent('backend-waking-up'));
+                    throw new Error('BACKEND_WAKING_UP');
+                }
+                return res.json();
+            })
             .then(data => {
                 setStats({
                     totalAlloys: data.total_alloys || 6,

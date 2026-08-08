@@ -21,6 +21,15 @@ import jsPDF from 'jspdf';
 import { dataService } from '@/services/dataService';
 import { voiceSafetyService, SafetyAlert } from '@/services/voiceSafety';
 
+const safeJson = async (res: Response) => {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("text/html") || res.status === 503 || res.status === 502) {
+    window.dispatchEvent(new CustomEvent('backend-waking-up'));
+    throw new Error('BACKEND_WAKING_UP');
+  }
+  return res.json();
+};
+
 export const Dashboard = () => {
   // Navigation Flow State
   const [currentStep, setCurrentStep] = useState(0);
@@ -60,7 +69,7 @@ export const Dashboard = () => {
       try {
         const runRes = await fetch('/api/smelting/current-run/');
         if (!runRes.ok || !active) return;
-        const run = await runRes.json();
+        const run = await safeJson(runRes);
         
         if (run && run.run_id && run.status !== 'STANDBY') {
           setMeltProgress(run.batch_progress);
@@ -172,7 +181,7 @@ export const Dashboard = () => {
 
   useEffect(() => {
     fetch('/api/alloys/')
-      .then(res => res.json())
+      .then(res => safeJson(res))
       .then(data => {
         const results = data.results || (Array.isArray(data) ? data : []);
         const mapped = results.map((item: any) => {
@@ -422,7 +431,7 @@ export const Dashboard = () => {
     try {
       const runRes = await fetch('/api/smelting/current-run/');
       if (!runRes.ok) return;
-      const runData = await runRes.json();
+      const runData = await safeJson(runRes);
       const batchUuid = runData.run_id ? runData.batch_id : null;
       if (!batchUuid) {
         console.warn("No active batch UUID found in current smelting run.");
@@ -468,7 +477,7 @@ export const Dashboard = () => {
     try {
       const runRes = await fetch('/api/smelting/current-run/');
       if (!runRes.ok) return;
-      const runData = await runRes.json();
+      const runData = await safeJson(runRes);
       const batchUuid = runData.run_id ? runData.batch_id : null;
       if (!batchUuid) {
         console.warn("No active batch UUID found to save quality report.");
@@ -523,7 +532,7 @@ export const Dashboard = () => {
       try {
         const res = await fetch('/api/inventory/');
         if (!res.ok) return;
-        const data = await res.json();
+        const data = await safeJson(res);
         const results = data.results || (Array.isArray(data) ? data : []);
         
         let shortageDetails = "";
@@ -1910,7 +1919,7 @@ export const Dashboard = () => {
                             operator: 'op_watas'
                           })
                         });
-                        const batchData = await batchRes.json();
+                        const batchData = await safeJson(batchRes);
                         
                         // 2. Create the SmeltingRun record in PostgreSQL
                         await dataService.startSmeltingRun(selectedAlloy.grade, batchWeight, batchData.id || batchData.batch_code);
