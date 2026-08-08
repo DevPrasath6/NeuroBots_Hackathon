@@ -1,29 +1,76 @@
-# MetalliSense — AI Smelting & Voice Safety Assistant
+# MetalliSense — Production-Grade AI Smelting & Voice Safety Assistant
 
-MetalliSense is a production-grade, state-of-the-art industrial AI intelligence system for metallurgy and arc furnace smelting control. Built to optimize alloy compositions, monitor real-time thermal telemetry, prevent safety anomalies, and automate production reporting.
+MetalliSense is an advanced industrial AI intelligence platform and Digital Twin control system for metallurgy and electric arc furnace smelting. It integrates machine learning predictive models, real-time telemetry dashboards, event-driven voice guidance, and automated compliance auditing to transform high-temperature metallurgical manufacturing.
 
 ---
 
-## 🚀 Key Features
+## 🏗️ System Architecture
+
+MetalliSense operates on a robust, decoupled three-tier architecture designed for low-latency feedback loops and high availability:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                   Vercel Global CDN (Frontend)                   │
+│         Vite + React SPA (Three.js 3D centerpieces, Recharts)     │
+└──────────────────────────────────────────────────────────────────┘
+                                 │
+                   (Secured REST APIs / JSON)
+                                 ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                 Render Web Service (Django REST API)              │
+│       Finite State Machine (FSM), AI Recommendations Engine,      │
+│      Statistical Ingestion & Optical Emission Spectrometry (OES)  │
+└──────────────────────────────────────────────────────────────────┘
+            │                                           │
+            ▼                                           ▼
+┌──────────────────────┐                     ┌──────────────────────┐
+│  Managed PostgreSQL  │                     │     Redis Cache      │
+│  State, Runs, Logs   │                     │  Celery Tasks Broker │
+└──────────────────────┘                     └──────────────────────┘
+```
+
+---
+
+## 🌟 Core Functionalities & Features
 
 ### 1. Robust Production State Machine (FSM)
-Smelting runs follow a strict, non-stalling state machine governed by the backend database engine:
+MetalliSense governs furnace runs via a strict, database-driven finite state machine, completely decoupling the production lifecycle from frontend animations or transient browser sessions:
 `Standby` ➔ `Alloy Selected` ➔ `Batch Size Entered` ➔ `Recipe Calculated` ➔ `Charging` ➔ `Heating` ➔ `Melting` ➔ `Live Monitoring` ➔ `OES Sampling` ➔ `AI Correction` ➔ `Validation` ➔ `Ready to Tap` ➔ `Tapping Animation` ➔ `Batch Completed` ➔ `Report Generated` ➔ `Dashboard`.
 
-### 2. Event-Driven AI Voice Safety Assistant
-- Restricts audio output to critical safety anomalies and guided loading stages (no continuous random chatter).
-- Strict alert cap: Maximum of 2 anomaly voice alerts per production cycle.
-- Integrates local Web Speech API synthesis with on-screen visual warning indicators.
+### 2. Conversational AI Metallurgist & Advisor
+- Chat interface allowing operators to query alloy grades, find application recommendations (e.g., *"marine grade steel"*), and perform weight-based charge calculations.
+- Performs automated inventory checks during recipe calculations and highlights stock shortages (e.g. *"Ferronickel shortage: 120 kg required, 85 kg in stock"*).
 
-### 3. Dynamic Dual-Unit Calculation & Persistence
-- Support for **Kilograms (kg)** and **Tonnes (t)** throughout the application.
-- All internal calculations run on a high-precision canonical kg value, but UI displays both units (e.g. `1.500 tonnes (1500 kg)`).
-- Persisted properties (`input_unit`, `target_mass_kg`, `display_mass`, `display_unit`) are fully synchronized in PostgreSQL.
+### 3. Real-Time Telemetry & Digital Twin
+- **Holographic Crucible Visualizer**: Displays live crucible state, core melt temperatures, induction heating efficiency, and cooling water flow pressure.
+- **Dynamic Charts**: Renders live curves of induction power consumption, temperature milestones, and thermal stability.
+- **3D Molten Metal Droplet**: Floating 3D liquid chrome centerpiece driven by a custom Three.js Simplex noise shader that responds to mouse position and furnace temperatures.
 
-### 4. Premium 3D Liquid Metal Hero Droplet
-- An organic, breathing 3D droplet of molten chrome/liquid mercury frozen in motion.
-- Driven by a custom Three.js Simplex noise vertex shader.
-- Physical reflections (roughness: 0.05, metalness: 1.0, clearcoat: 1.0) reacting to dynamic furnace light sources.
+### 4. Machine Learning Predictive Engine
+- **Quality Score Prediction**: Estimates final alloy composition pass-probability.
+- **Anomaly Detection**: Real-time warning systems monitoring temperature deviations to flag thermal runaway.
+- **Resource Optimization**: Estimates heat duration (minutes) and electricity usage (kWh) before the power cycles begin.
+- **Neural Network Visualizer**: Interactive rendering of active layers and nodes as data flows through the neural network.
+- **Multi-Grade Learning Module**: Demonstrates training dataset convergence and error rates across Stainless Steel, Tool Steel, and Nickel Superalloys.
+
+### 5. Spectrometer (OES) Verification & AI Trim Trimming
+- Simulates an Optical Emission Spectrometry (OES) scan of the molten pool.
+- Compares element concentrations (Cr, Ni, Mn, Si, C, Fe) against ASTM/ISO specifications.
+- Automatically calculates precise correction trim additions (e.g., Ferrochrome or Ferrosilicon) to bring off-spec chemistry into alignment.
+
+### 6. Dynamic Unit-Aware UI & Persistent Dual Units
+- Standardized support for **Kilograms (kg)** and **Tonnes (t)**.
+- Internal calculations utilize canonical kilogram values, while frontend labels, AI recommendations, charging checklists, and logs present dual units (e.g. `1.500 tonnes (1500 kg)`).
+- Persisted database properties (`input_unit`, `target_mass_kg`, `display_mass`, `display_unit`) are fully synchronized.
+
+### 7. Voice Safety Assistant
+- Local Web Speech synthesis providing step-by-step charging and refinement confirmation.
+- Quiet operation during normal runs; triggers alerts only when critical temperature anomalies or composition deviations occur.
+- Strict limit of 2 anomaly warnings per production cycle to prevent audio alert fatigue.
+
+### 8. Compliance Reporting & Batch History Logs
+- Generates detailed, print-ready PDF Production Reports summarizing batch metadata, charge logs, temperature curves, OES validations, and AI recommendations.
+- History log module allowing search, filter, and review of all completed batches.
 
 ---
 
@@ -73,27 +120,25 @@ Smelting runs follow a strict, non-stalling state machine governed by the backen
 
 ## 🌐 Production Deployment
 
-We have preconfigured the repository configuration files to make hosting simple and automated:
-
 ### Frontend (Vercel)
-- **Configuration File**: Created `frontend/vercel.json` to configure URL routing (rewrites SPA routing to prevent 404s) and proxy requests matching `/api/*` to Render.
+- **Configuration File**: Created `frontend/vercel.json` to handle client-side routing rewrites and API proxies.
 - **How to Deploy**:
-  1. Push the branch to your Git provider (GitHub/GitLab).
-  2. Import the project in Vercel, setting `frontend` as the **Root Directory**.
-  3. Select **Vite** as the framework preset and deploy.
+  1. Link your GitHub repository to Vercel.
+  2. Select `frontend` as the **Root Directory**.
+  3. Choose **Vite** as the framework preset and deploy.
 
 ### Backend (Render)
-- **Configuration File**: Updated `backend/requirements.txt` to include `gunicorn`, `dj-database-url`, and `psycopg2-binary`.
-- **Database Configuration**: Programmed `backend/alloy_backend/settings.py` to automatically bind database connections to your Render PostgreSQL database via the `DATABASE_URL` environment variable.
+- **Configuration File**: Added production requirements (`gunicorn`, `dj-database-url`, and `psycopg2-binary`) to `backend/requirements.txt`.
+- **Database Configuration**: Programmed `backend/alloy_backend/settings.py` to bind database connections to Render PostgreSQL via `DATABASE_URL`.
 - **How to Deploy**:
-  1. Create a **PostgreSQL** database on Render.
-  2. Create a new **Web Service** on Render, linking it to the same Git repository.
-  3. Set the build directory root to `backend`.
-  4. Specify the Build Command:
+  1. Spin up a **PostgreSQL** database on Render.
+  2. Create a new **Web Service** on Render, linking it to your repository.
+  3. Set build directory root to `backend`.
+  4. Specify Build Command:
      ```bash
      pip install -r requirements.txt && python manage.py migrate
      ```
-  5. Specify the Start Command:
+  5. Specify Start Command:
      ```bash
      gunicorn alloy_backend.wsgi:application
      ```
