@@ -733,8 +733,8 @@ export const FurnaceMonitoring = () => {
             <ResponsiveContainer width="100%" height={150}>
               <LineChart data={temperatureHistory}>
                  <CartesianGrid strokeDasharray="3 3" stroke="#101827" />
-                 <XAxis dataKey="time" stroke="#4b5563" fontSize={9} fontClassName="font-mono" />
-                 <YAxis stroke="#4b5563" fontSize={9} fontClassName="font-mono" domain={[1450, 1680]} />
+                 <XAxis dataKey="time" stroke="#4b5563" fontSize={9} className="font-mono" />
+                 <YAxis stroke="#4b5563" fontSize={9} className="font-mono" domain={[1450, 1680]} />
                  <Tooltip 
                    contentStyle={{ 
                      backgroundColor: '#090d16', 
