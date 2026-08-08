@@ -73,7 +73,7 @@ export const Dashboard = () => {
 
     const syncRun = async () => {
       try {
-        const runRes = await fetch('/api/smelting/current-run/');
+        const runRes = await fetch(`/api/smelting/current-run/?_=${Date.now()}`);
         if (!runRes.ok || !active) return;
         const run = await safeJson(runRes);
         
@@ -188,39 +188,54 @@ export const Dashboard = () => {
   };
 
   useEffect(() => {
-    fetch('/api/alloys/')
-      .then(res => safeJson(res))
-      .then(data => {
-        const results = data.results || (Array.isArray(data) ? data : []);
-        const mapped = results.map((item: any) => {
-          const compMap: Record<string, number> = {};
-          if (Array.isArray(item.compositions)) {
-            item.compositions.forEach((c: any) => {
-              compMap[c.element] = c.target_pct;
-            });
-          } else if (item.compositions && typeof item.compositions === 'object') {
-            Object.assign(compMap, item.compositions);
+    let active = true;
+    let retryTimeout: ReturnType<typeof setTimeout>;
+
+    const loadAlloys = () => {
+      fetch(`/api/alloys/?_=${Date.now()}`)
+        .then(res => safeJson(res))
+        .then(data => {
+          if (!active) return;
+          const results = data.results || (Array.isArray(data) ? data : []);
+          const mapped = results.map((item: any) => {
+            const compMap: Record<string, number> = {};
+            if (Array.isArray(item.compositions)) {
+              item.compositions.forEach((c: any) => {
+                compMap[c.element] = c.target_pct;
+              });
+            } else if (item.compositions && typeof item.compositions === 'object') {
+              Object.assign(compMap, item.compositions);
+            }
+            return {
+              id: item.id,
+              name: item.name,
+              grade: item.code,
+              standard: item.standard || "Industrial Reference Standard",
+              applications: item.applications || "Industrial manufacturing pipeline lining",
+              properties: `Density: ${item.density || 7.8} g/cm³`,
+              composition: compMap
+            };
+          });
+          setAlloysList(mapped);
+          if (mapped.length > 0) {
+            setSelectedAlloy(mapped[0]);
           }
-          return {
-            id: item.id,
-            name: item.name,
-            grade: item.code,
-            standard: item.standard || "Industrial Reference Standard",
-            applications: item.applications || "Industrial manufacturing pipeline lining",
-            properties: `Density: ${item.density || 7.8} g/cm³`,
-            composition: compMap
-          };
+        })
+        .catch(err => {
+          if (!active) return;
+          if (err && err.message !== 'BACKEND_WAKING_UP') {
+            console.error("Error loading alloys catalog from DB:", err);
+          }
+          retryTimeout = setTimeout(loadAlloys, 3000);
         });
-        setAlloysList(mapped);
-        if (mapped.length > 0) {
-          setSelectedAlloy(mapped[0]);
-        }
-      })
-      .catch(err => {
-        if (err && err.message !== 'BACKEND_WAKING_UP') {
-          console.error("Error loading alloys catalog from DB:", err);
-        }
-      });
+    };
+
+    loadAlloys();
+
+    return () => {
+      active = false;
+      clearTimeout(retryTimeout);
+    };
   }, []);
 
   const filteredAlloys = alloysList.filter(alloy => 
