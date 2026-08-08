@@ -174,7 +174,7 @@ export const DashboardHeader = () => {
 
               {/* Admin (opens Django Admin) */}
               <a
-                href="http://localhost:8000/admin/"
+                href="/admin/"
                 target="_blank"
                 rel="noopener noreferrer"
               >

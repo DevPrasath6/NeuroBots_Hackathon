@@ -5,6 +5,10 @@
       "destination": "https://metallisense-backend.onrender.com/api/:path*"
     },
     {
+      "source": "/admin/:path*",
+      "destination": "https://metallisense-backend.onrender.com/admin/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

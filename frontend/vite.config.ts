@@ -15,6 +15,11 @@ export default defineConfig(({ mode }) => ({
         changeOrigin: true,
         rewrite: (path) => path,
       },
+      '/admin': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        rewrite: (path) => path,
+      },
     },
   },
   plugins: [
