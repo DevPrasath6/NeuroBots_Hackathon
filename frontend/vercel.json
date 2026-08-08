@@ -21,12 +21,12 @@
   ],
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://metallisense-backend.onrender.com/api/:path*"
+      "source": "/api/(.*)",
+      "destination": "https://metallisense-backend.onrender.com/api/$1"
     },
     {
-      "source": "/admin/:path*",
-      "destination": "https://metallisense-backend.onrender.com/admin/:path*"
+      "source": "/admin/(.*)",
+      "destination": "https://metallisense-backend.onrender.com/admin/$1"
     },
     {
       "source": "/(.*)",
