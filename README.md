@@ -1,5 +1,6 @@
 # MetalliSense
 
+
 Unified documentation for the full MetalliSense ecosystem: AI services, Node.js backend, and React frontend.
 
 ## What This Repository Contains
