@@ -18,6 +18,10 @@ from alloy_api.models import (
 def seed():
     print("Starting database seeding...")
     
+    if Alloy.objects.exists():
+        print("Database already contains alloy specifications. Skipping seeding.")
+        return
+    
     # 1. Seed Alloys & Compositions from master_alloys.csv
     csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'datasets', 'master_alloys.csv')
     if not os.path.exists(csv_path):
